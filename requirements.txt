@@ -1,0 +1,8 @@
+# Contractor Data Collective Effort dashboards — dependencies
+#
+# Contractor_Dashboard_Export.py must be run from the ArcGIS Pro Python
+# environment (arcgispro-py3), which already provides:
+#   arcgis, pandas
+# No extra pip install is required in that environment.
+#
+# The HTML charts use Chart.js loaded from a CDN — no build step or npm needed.

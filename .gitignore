@@ -1,0 +1,23 @@
+# --- Local config (never commit — contains AGOL item IDs) ---
+config.py
+
+# --- Logs ---
+Logs/
+*.log
+
+# --- Python cache ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Claude Code (memory, local settings) ---
+.claude/
+
+# --- Local reference: AGOL Experience Builder config dump (not published) ---
+Contractor_Collective_Effort_Dashboard_AGOL_Item.json
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+desktop.ini
