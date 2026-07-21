@@ -65,6 +65,7 @@
       <div class="tile" style="border-left-color:#5E8FD0"><div class="tile-val" id="k_sites">&ndash;</div><div class="tile-lbl">Sites worked</div></div>
       <div class="tile" style="border-left-color:#2d6a4f"><div class="tile-val" id="k_dist">&ndash;</div><div class="tile-lbl">Distance covered</div></div>
       <div class="tile" style="border-left-color:#DF6B35"><div class="tile-val" id="k_size">&ndash;</div><div class="tile-lbl">Plants controlled</div></div>
+      <div class="tile" style="border-left-color:#77B484"><div class="tile-val" id="k_area">&ndash;</div><div class="tile-lbl">Area controlled (Kaitiaki)</div></div>
       <div class="tile" style="border-left-color:#8257C2"><div class="tile-val" id="k_species">&ndash;</div><div class="tile-lbl">Pest plant species</div></div>
       <div class="tile" style="border-left-color:#41546D"><div class="tile-val" id="k_conts">&ndash;</div><div class="tile-lbl">Contractors</div></div>
     </div>
@@ -72,25 +73,25 @@
     <div class="grid">
       <div class="card">
         <div class="card-head"><div><div class="card-title">Plants Controlled by Species</div><div class="card-sub">Top 15 by count · rest grouped</div></div>
-          <button class="export-btn" onclick="exportSingle('c_species','Plants Controlled by Species',false)">&#8681; PNG</button></div>
+          <button class="export-btn" onclick="exportSingle('c_species','Plants Controlled by Species',[])">&#8681; PNG</button></div>
         <div class="card-body"><div class="canvas-box"><canvas id="c_species"></canvas></div></div>
       </div>
 
       <div class="card">
         <div class="card-head"><div><div class="card-title">Plants Controlled by Age Class</div><div class="card-sub">Adult / Juvenile / Seedling</div></div>
-          <button class="export-btn" onclick="exportSingle('c_age','Plants Controlled by Age Class',false)">&#8681; PNG</button></div>
+          <button class="export-btn" onclick="exportSingle('c_age','Plants Controlled by Age Class',[])">&#8681; PNG</button></div>
         <div class="card-body"><div class="canvas-box"><canvas id="c_age"></canvas></div></div>
       </div>
 
       <div class="card">
         <div class="card-head"><div><div class="card-title">Distance Covered by Contractor</div><div class="card-sub">Stacked by financial year</div></div>
-          <button class="export-btn" onclick="exportSingle('c_distance','Distance Covered by Contractor',true)">&#8681; PNG</button></div>
+          <button class="export-btn" onclick="exportSingle('c_distance','Distance Covered by Contractor',['f_FinYr'])">&#8681; PNG</button></div>
         <div class="card-body"><div class="canvas-box"><canvas id="c_distance"></canvas></div></div>
       </div>
 
       <div class="card">
         <div class="card-head"><div><div class="card-title">Effort Over Time</div><div class="card-sub">Distance covered per year</div></div>
-          <button class="export-btn" onclick="exportSingle('c_effort','Effort Over Time',true)">&#8681; PNG</button></div>
+          <button class="export-btn" onclick="exportSingle('c_effort','Effort Over Time',['f_FinYr'])">&#8681; PNG</button></div>
         <div class="card-body"><div class="canvas-box"><canvas id="c_effort"></canvas></div></div>
         <p class="note">Length of pest-plant control tracks recorded each year &mdash; a proxy for on-ground effort.</p>
       </div>
@@ -106,6 +107,13 @@
         </div>
         <p class="note">Based on recorded pest-plant control work. A fall in plants controlled can reflect successful control, but also less control recorded that year &mdash; read alongside effort. Note: the programme grew from 4 to 38 sites, so the all-sites trend partly reflects more sites being added; read per-site for the clearest signal.</p>
       </div>
+
+      <div class="card wide" style="height:300px">
+        <div class="card-head"><div><div class="card-title">Pest Animal Control</div><div class="card-sub">Animals controlled by species &mdash; ignores the Activity-type filter</div></div>
+          <button class="export-btn" onclick="exportSingle('c_animal','Pest Animal Control',['f_ActivityType'])">&#8681; PNG</button></div>
+        <div class="card-body"><div class="canvas-box"><canvas id="c_animal"></canvas></div>
+          <p class="note" id="animal_note"></p></div>
+      </div>
     </div>
   </div>
   <p class="gen" id="gen"></p>
@@ -116,8 +124,8 @@
   const fmt = n => Math.round(n).toLocaleString('en-NZ');
   const el = id => document.getElementById(id);
 
-  let points = [], tracks = [], YEARS = [];
-  let cSpecies, cAge, cDistance, cEffort, cTrendDiv, cTrendSize;
+  let points = [], tracks = [], animalPoints = [], animalTracks = [], rawAll = [], YEARS = [];
+  let cSpecies, cAge, cDistance, cEffort, cTrendDiv, cTrendSize, cAnimal;
 
   // ---- value/total label plugins (attached per chart) ----
   const valueLabels = { id:'valueLabels', afterDatasetsDraw(c){ const {ctx}=c; const m=c.getDatasetMeta(0); ctx.save(); ctx.font="600 11px 'DM Sans',sans-serif"; ctx.fillStyle='#41546D'; ctx.textBaseline='middle';
@@ -125,10 +133,15 @@
   const totalLabels = { id:'totalLabels', afterDatasetsDraw(c){ const {ctx}=c; const last=c.getDatasetMeta(c.data.datasets.length-1); ctx.save(); ctx.font="600 11px 'DM Sans',sans-serif"; ctx.fillStyle='#41546D'; ctx.textBaseline='middle';
     last.data.forEach((b,i)=>{ let t=0; c.data.datasets.forEach(ds=>t+=(Number(ds.data[i])||0)); if(!t)return; ctx.fillText(fmt(t)+' km', b.x+6, b.y); }); ctx.restore(); } };
 
+  const isAnimal = d => d.ActivityType === 'Pest Animal Control';
   fetch('./dashboard_data.json').then(r=>r.json()).then(data=>{
-    points = (data.points || []).filter(d => d.ActivityType !== 'Pest Animal Control');
-    tracks = (data.tracks || []);
-    YEARS  = [...new Set([...points, ...tracks].map(d => d.FinYr).filter(v => v != null && v !== ''))].sort();
+    const rawPoints = data.points || [], rawTracks = data.tracks || [];
+    points       = rawPoints.filter(d => !isAnimal(d));   // pest-plant points
+    animalPoints = rawPoints.filter(isAnimal);            // pest-animal points (deer)
+    tracks       = rawTracks.filter(d => !isAnimal(d));   // pest-plant tracks
+    animalTracks = rawTracks.filter(isAnimal);            // pest-animal tracks
+    rawAll       = rawPoints.concat(rawTracks);
+    YEARS  = [...new Set(rawAll.map(d => d.FinYr).filter(v => v != null && v !== ''))].sort();
     el('gen').textContent = 'Generated: ' + data.generated_at;
     buildFilters();
     renderAll();
@@ -148,12 +161,13 @@
   function buildFilters(){
     fillSelect('f_FinYr', YEARS.map(y=>({value:y,text:y})), 'All years');
     const nameById = {};
-    allRows().forEach(d => { if (d.SiteID != null && d.SiteID !== '' && !(d.SiteID in nameById)) nameById[d.SiteID] = d.SiteName || d.SiteID; });
+    rawAll.forEach(d => { if (d.SiteID != null && d.SiteID !== '' && !(d.SiteID in nameById)) nameById[d.SiteID] = d.SiteName || d.SiteID; });
     const sites = Object.keys(nameById).sort((a,b)=>String(nameById[a]).localeCompare(String(nameById[b]))).map(id=>({value:id,text:nameById[id]+' ('+id+')'}));
     fillSelect('f_SiteID', sites, 'All sites');
-    fillSelect('f_ProgrammeType', uniq('ProgrammeType', allRows()).map(v=>({value:v,text:v})), 'All programmes');
+    fillSelect('f_ProgrammeType', uniq('ProgrammeType', rawAll).map(v=>({value:v,text:v})), 'All programmes');
+    // Activity options are pest-plant only; pest-animal is shown in its own card and ignores this filter.
     fillSelect('f_ActivityType', uniq('ActivityType', allRows()).map(v=>({value:v,text:v})), 'All activities');
-    fillSelect('f_Cont_name', uniq('Cont_name', allRows()).map(v=>({value:v,text:v})), 'All contractors');
+    fillSelect('f_Cont_name', uniq('Cont_name', rawAll).map(v=>({value:v,text:v})), 'All contractors');
   }
 
   const FV = id => el(id).value;
@@ -205,6 +219,15 @@
     rows.forEach(d => { const y = d.FinYr; if (!(y in size)) return; has[y] = true; size[y] += (Number(d.Distance_Km)||0); });
     return YEARS.map(y => has[y] ? Math.round(size[y]*100)/100 : null);
   }
+  // Pest-animal card ignores the Activity filter (it *is* the animal activity), respects the rest.
+  const fAnimalP = () => animalPoints.filter(d => matchRow(d, ['ActivityType']));
+  const fAnimalT = () => animalTracks.filter(d => matchRow(d, ['ActivityType']));
+  function dataAnimal(){
+    const tot = {};
+    fAnimalP().forEach(d => { const c = d.SpeciesID; if (c == null || c === '' || c === 'Null') return; tot[c] = (tot[c]||0) + (Number(d.Size_of_in)||0); });
+    const labels = Object.keys(tot).sort((a,b)=>tot[b]-tot[a]);
+    return { labels, values: labels.map(c=>Math.round(tot[c]*100)/100) };
+  }
 
   // ---------- render ----------
   const FONT = "'DM Sans', sans-serif";
@@ -254,6 +277,17 @@
     const tr = dataTrend();
     cTrendDiv  = lineChart('c_trend_div',  tr.diversity, '#5E8FD0', 'Distinct species', true);
     cTrendSize = lineChart('c_trend_size', tr.size,      '#DF6B35', 'Plants controlled', false);
+
+    const an = dataAnimal();
+    cAnimal = new Chart(el('c_animal'), {
+      type:'bar',
+      data:{ labels:an.labels, datasets:[{ data:an.values, backgroundColor:'#a0703c', borderWidth:0, borderRadius:3, barPercentage:0.7, categoryPercentage:0.85 }] },
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{padding:{right:56}},
+        plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>'Animals controlled: '+fmt(c.parsed.x) } } },
+        scales:{ x:{beginAtZero:true,title:{display:true,text:'Animals controlled',font:{family:FONT,size:10}},grid:{color:'#e8e8e8'},ticks:{precision:0,font:{family:FONT}}},
+                 y:{grid:{display:false},ticks:{color:'#000',autoSkip:false,font:{family:FONT,size:11}}} } },
+      plugins:[valueLabels]
+    });
   }
 
   // ---------- update on filter change ----------
@@ -268,7 +302,21 @@
     cTrendDiv.data.datasets[0].data = tr.diversity; cTrendDiv.update();
     cTrendSize.data.datasets[0].data = tr.size; cTrendSize.update();
     computeKPI();
-    el('scope').textContent = scopeText(false).toLowerCase() === 'all records' ? 'all records' : scopeText(false);
+    computeAnimal();
+    const scope = scopeText([]);
+    el('scope').textContent = scope === 'All records' ? 'all records' : scope;
+  }
+
+  function computeAnimal(){
+    const an = dataAnimal();
+    cAnimal.data.labels = an.labels; cAnimal.data.datasets[0].data = an.values; cAnimal.update();
+    const p = fAnimalP(), t = fAnimalT();
+    const animals = p.reduce((s,d)=>s+(Number(d.Size_of_in)||0),0);
+    const dist    = t.reduce((s,d)=>s+(Number(d.Distance_Km)||0),0);
+    const conts   = new Set([...p, ...t].map(d=>d.Cont_name).filter(v=>v!=null&&v!==''));
+    el('animal_note').textContent = p.length
+      ? fmt(animals)+' animals controlled · '+fmt(dist)+' km control tracks · '+conts.size+' contractor'+(conts.size===1?'':'s')+'. Deer control — a small but growing dataset.'
+      : 'No pest-animal control records for the current filters.';
   }
 
   function computeKPI(){
@@ -278,17 +326,23 @@
     const size    = p.reduce((s,d)=>s+(Number(d.Size_of_in)||0),0);
     const species = new Set(p.map(d=>d.SpeciesID).filter(v=>v!=null&&v!==''&&v!=='Null'));
     const conts   = new Set([...p, ...t].map(d=>d.Cont_name).filter(v=>v!=null&&v!==''));
+    const area    = p.reduce((s,d)=>s+(Number(d.Size_sqm)||0),0);   // only Kaitiaki records this
     el('k_sites').textContent = fmt(sites.size);
     el('k_dist').innerHTML = fmt(dist) + ' <span class="tile-unit">km</span>';
     el('k_size').textContent = fmt(size);
+    el('k_area').innerHTML = area > 0 ? fmt(area) + ' <span class="tile-unit">m²</span>' : '&ndash;';
     el('k_species').textContent = fmt(species.size);
     el('k_conts').textContent = fmt(conts.size);
   }
 
-  function scopeText(ignoreFY){
-    const order = [['f_FinYr',ignoreFY],['f_SiteID',false],['f_ProgrammeType',false],['f_ActivityType',false],['f_Cont_name',false]];
+  // ignore: array of select ids to leave out of the label (e.g. ['f_FinYr'] for year-axis charts).
+  function scopeText(ignore){
+    ignore = ignore || [];
     const parts = [];
-    order.forEach(([id,skip]) => { if (skip) return; const s = el(id); if (s.value !== '__ALL__') parts.push(s.options[s.selectedIndex].textContent); });
+    ['f_FinYr','f_SiteID','f_ProgrammeType','f_ActivityType','f_Cont_name'].forEach(id => {
+      if (ignore.includes(id)) return;
+      const s = el(id); if (s.value !== '__ALL__') parts.push(s.options[s.selectedIndex].textContent);
+    });
     return parts.length ? parts.join(' · ') : 'All records';
   }
 
@@ -305,8 +359,8 @@
     if (hasScope){ ctx.fillStyle = '#5a6b7b'; ctx.font = `500 ${Math.round(11*dpr)}px Arial, sans-serif`; ctx.fillText(scope, padX, Math.round(40*dpr)); }
     return hasScope;
   }
-  function exportSingle(canvasId, title, ignoreFY){
-    const src = el(canvasId); const scope = scopeText(ignoreFY); const hasScope = scope && scope !== 'All records';
+  function exportSingle(canvasId, title, ignore){
+    const src = el(canvasId); const scope = scopeText(ignore); const hasScope = scope && scope !== 'All records';
     const dpr = window.devicePixelRatio || 1; const hdrH = Math.round((hasScope?66:54)*dpr), padX = Math.round(18*dpr);
     const out = document.createElement('canvas'); out.width = src.width; out.height = src.height + hdrH;
     const ctx = out.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0,0,out.width,out.height);
@@ -316,7 +370,7 @@
   }
   function exportTrend(){
     const c1 = el('c_trend_div'), c2 = el('c_trend_size'); const title = 'Pest-Plant Trend Over Time';
-    const scope = scopeText(true); const hasScope = scope && scope !== 'All records';
+    const scope = scopeText(['f_FinYr']); const hasScope = scope && scope !== 'All records';
     const dpr = window.devicePixelRatio || 1;
     const hdrH = Math.round((hasScope?54:40)*dpr), subH = Math.round(20*dpr), padX = Math.round(18*dpr), gap = Math.round(10*dpr);
     const out = document.createElement('canvas'); out.width = Math.max(c1.width, c2.width); out.height = hdrH + subH + c1.height + gap + subH + c2.height;
