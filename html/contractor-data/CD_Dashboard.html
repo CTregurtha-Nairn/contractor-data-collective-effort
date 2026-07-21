@@ -64,21 +64,21 @@
     <div class="kpis">
       <div class="tile" style="border-left-color:#5E8FD0"><div class="tile-val" id="k_sites">&ndash;</div><div class="tile-lbl">Sites worked</div></div>
       <div class="tile" style="border-left-color:#2d6a4f"><div class="tile-val" id="k_dist">&ndash;</div><div class="tile-lbl">Distance covered</div></div>
-      <div class="tile" style="border-left-color:#DF6B35"><div class="tile-val" id="k_size">&ndash;</div><div class="tile-lbl">Infestation size controlled</div></div>
+      <div class="tile" style="border-left-color:#DF6B35"><div class="tile-val" id="k_size">&ndash;</div><div class="tile-lbl">Plants controlled</div></div>
       <div class="tile" style="border-left-color:#8257C2"><div class="tile-val" id="k_species">&ndash;</div><div class="tile-lbl">Pest plant species</div></div>
       <div class="tile" style="border-left-color:#41546D"><div class="tile-val" id="k_conts">&ndash;</div><div class="tile-lbl">Contractors</div></div>
     </div>
 
     <div class="grid">
       <div class="card">
-        <div class="card-head"><div><div class="card-title">Infestation Size by Species</div><div class="card-sub">Top 15 by size · rest grouped</div></div>
-          <button class="export-btn" onclick="exportSingle('c_species','Infestation Size by Species',false)">&#8681; PNG</button></div>
+        <div class="card-head"><div><div class="card-title">Plants Controlled by Species</div><div class="card-sub">Top 15 by count · rest grouped</div></div>
+          <button class="export-btn" onclick="exportSingle('c_species','Plants Controlled by Species',false)">&#8681; PNG</button></div>
         <div class="card-body"><div class="canvas-box"><canvas id="c_species"></canvas></div></div>
       </div>
 
       <div class="card">
-        <div class="card-head"><div><div class="card-title">Infestation Size by Age Class</div><div class="card-sub">Adult / Juvenile / Seedling</div></div>
-          <button class="export-btn" onclick="exportSingle('c_age','Infestation Size by Age Class',false)">&#8681; PNG</button></div>
+        <div class="card-head"><div><div class="card-title">Plants Controlled by Age Class</div><div class="card-sub">Adult / Juvenile / Seedling</div></div>
+          <button class="export-btn" onclick="exportSingle('c_age','Plants Controlled by Age Class',false)">&#8681; PNG</button></div>
         <div class="card-body"><div class="canvas-box"><canvas id="c_age"></canvas></div></div>
       </div>
 
@@ -96,15 +96,15 @@
       </div>
 
       <div class="card wide">
-        <div class="card-head"><div><div class="card-title">Pest-Plant Trend Over Time</div><div class="card-sub">Diversity &amp; infestation size across the years</div></div>
+        <div class="card-head"><div><div class="card-title">Pest-Plant Trend Over Time</div><div class="card-sub">Diversity &amp; plants controlled across the years</div></div>
           <button class="export-btn" onclick="exportTrend()">&#8681; PNG</button></div>
         <div class="card-body">
           <div class="mini-sub">Pest species diversity &mdash; distinct species recorded</div>
           <div class="canvas-box"><canvas id="c_trend_div"></canvas></div>
-          <div class="mini-sub">Total infestation size &mdash; sum of recorded size</div>
+          <div class="mini-sub">Total plants controlled &mdash; sum of recorded count</div>
           <div class="canvas-box"><canvas id="c_trend_size"></canvas></div>
         </div>
-        <p class="note">Based on recorded pest-plant control work. A fall in infestation size can reflect successful control, but also less control recorded that year &mdash; read alongside effort. Note: the programme grew from 4 to 38 sites, so the all-sites trend partly reflects more sites being added; read per-site for the clearest signal.</p>
+        <p class="note">Based on recorded pest-plant control work. A fall in plants controlled can reflect successful control, but also less control recorded that year &mdash; read alongside effort. Note: the programme grew from 4 to 38 sites, so the all-sites trend partly reflects more sites being added; read per-site for the clearest signal.</p>
       </div>
     </div>
   </div>
@@ -225,8 +225,8 @@
       type:'bar',
       data:{ labels:sp.labels, datasets:[{ data:sp.values, backgroundColor:sp.colors, borderWidth:0, borderRadius:3, barPercentage:0.86, categoryPercentage:0.92 }] },
       options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{padding:{right:64}},
-        plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>'Infestation size: '+fmt(c.parsed.x) } } },
-        scales:{ x:{beginAtZero:true,title:{display:true,text:'Sum of infestation size',font:{family:FONT,size:10}},grid:{color:'#e8e8e8'},ticks:{font:{family:FONT}}},
+        plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>'Plants controlled: '+fmt(c.parsed.x) } } },
+        scales:{ x:{beginAtZero:true,title:{display:true,text:'Number of plants controlled',font:{family:FONT,size:10}},grid:{color:'#e8e8e8'},ticks:{font:{family:FONT}}},
                  y:{grid:{display:false},ticks:{color:'#000',autoSkip:false,font:{family:FONT,size:10}}} } },
       plugins:[valueLabels]
     });
@@ -236,7 +236,7 @@
       data:{ labels:['Adult (A)','Juvenile (J)','Seedling (S)'], datasets:[{ data:dataAge(), backgroundColor:'#5E8FD0', borderWidth:0, borderRadius:3, barPercentage:0.7, categoryPercentage:0.8 }] },
       options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
         scales:{ x:{grid:{display:false},ticks:{color:'#000',font:{family:FONT,size:12,weight:'600'}}},
-                 y:{beginAtZero:true,title:{display:true,text:'Sum of infestation size',font:{family:FONT,size:10}},grid:{color:'#e8e8e8'},ticks:{font:{family:FONT}}} } }
+                 y:{beginAtZero:true,title:{display:true,text:'Number of plants controlled',font:{family:FONT,size:10}},grid:{color:'#e8e8e8'},ticks:{font:{family:FONT}}} } }
     });
 
     const dd = dataDistance();
@@ -253,7 +253,7 @@
     cEffort = lineChart('c_effort', dataEffort(), '#2d6a4f', 'Distance covered (Km)', false);
     const tr = dataTrend();
     cTrendDiv  = lineChart('c_trend_div',  tr.diversity, '#5E8FD0', 'Distinct species', true);
-    cTrendSize = lineChart('c_trend_size', tr.size,      '#DF6B35', 'Sum of size',      false);
+    cTrendSize = lineChart('c_trend_size', tr.size,      '#DF6B35', 'Plants controlled', false);
   }
 
   // ---------- update on filter change ----------
@@ -324,7 +324,7 @@
     drawHeader(ctx, dpr, title, scope, padX);
     let y = hdrH; ctx.fillStyle = '#41546D'; ctx.font = `600 ${Math.round(11*dpr)}px Arial, sans-serif`;
     ctx.fillText('Pest species diversity — distinct species recorded', padX, y + Math.round(14*dpr)); y += subH; ctx.drawImage(c1, 0, y); y += c1.height + gap;
-    ctx.fillStyle = '#41546D'; ctx.fillText('Total infestation size — sum of recorded size', padX, y + Math.round(14*dpr)); y += subH; ctx.drawImage(c2, 0, y);
+    ctx.fillStyle = '#41546D'; ctx.fillText('Total plants controlled — sum of recorded count', padX, y + Math.round(14*dpr)); y += subH; ctx.drawImage(c2, 0, y);
     openPng(out, title);
   }
   function openPng(out, title){
