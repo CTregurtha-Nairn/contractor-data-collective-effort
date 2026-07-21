@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Contractor Data — Key Figures</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%;overflow:hidden}
+    body{font-family:'DM Sans',sans-serif;background:#fff}
+    .wrap{background:#fff;padding:16px 20px;position:relative;height:100%;display:flex;flex-direction:column}
+    .hd{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:16px}
+    .title{font-size:1rem;font-weight:600;color:#1a1a2e;line-height:1.4}
+    .scope{font-size:0.72rem;color:#8a94a0;margin-top:2px}
+    .filter-btn{background:#273747;color:#fff;border:none;border-radius:6px;padding:7px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:0.78rem;font-family:inherit;white-space:nowrap;flex-shrink:0}
+    .filter-btn:hover{background:#3a4f63}
+    .panel{display:none;position:absolute;right:24px;top:60px;background:#fff;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.18);z-index:100;min-width:280px;overflow:hidden}
+    .panel.open{display:block}
+    .panel-hd{background:#273747;color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between}
+    .panel-hd span{font-weight:600;font-size:0.9rem}
+    .panel-close{background:none;border:none;color:#fff;cursor:pointer;font-size:1.1rem;line-height:1;opacity:.8}
+    .panel-close:hover{opacity:1}
+    .panel-body{padding:16px;max-height:60vh;overflow:auto}
+    .fg{margin-bottom:14px}
+    .fg:last-child{margin-bottom:0}
+    .fl{font-size:0.78rem;color:#555;font-weight:500;margin-bottom:6px}
+    select{width:100%;border:1px solid #ddd;border-radius:6px;padding:8px 28px 8px 10px;font-size:0.85rem;color:#1a1a2e;font-family:inherit;appearance:none;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 10px center;cursor:pointer}
+    select:focus{outline:none;border-color:#273747}
+    .reset-btn{width:100%;margin-top:4px;background:#f0f2f4;color:#273747;border:none;border-radius:6px;padding:8px;cursor:pointer;font-size:0.8rem;font-family:inherit;font-weight:500}
+    .reset-btn:hover{background:#e2e6ea}
+    .tiles{flex:1;min-height:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;align-content:center}
+    .tile{background:#f6f8fa;border-radius:10px;padding:16px 18px;border-left:4px solid #5E8FD0;display:flex;flex-direction:column;justify-content:center;min-height:0}
+    .tile-val{font-size:1.9rem;font-weight:700;color:#1a1a2e;line-height:1.1;white-space:nowrap}
+    .tile-unit{font-size:0.9rem;font-weight:500;color:#5a6b7b}
+    .tile-lbl{font-size:0.76rem;color:#5a6b7b;margin-top:4px;font-weight:500}
+    .updated{color:#aaa;font-size:.62em;position:absolute;bottom:4px;right:8px;margin:0}
+    .empty{padding:20px;color:#888;font-size:0.9rem}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hd">
+    <div>
+      <div class="title" id="chartTitle">Contractor Data &mdash; Key Figures</div>
+      <div class="scope" id="scope">All years &middot; all sites</div>
+    </div>
+    <button class="filter-btn" onclick="togglePanel()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+      Filter
+    </button>
+  </div>
+
+  <div class="panel" id="panel">
+    <div class="panel-hd"><span>Filter</span><button class="panel-close" onclick="togglePanel()">&#x2715;</button></div>
+    <div class="panel-body">
+      <div class="fg"><div class="fl">Financial Year</div><select id="f_FinYr" onchange="compute()"></select></div>
+      <div class="fg"><div class="fl">Site</div><select id="f_SiteID" onchange="compute()"></select></div>
+      <div class="fg"><div class="fl">Programme</div><select id="f_ProgrammeType" onchange="compute()"></select></div>
+      <button class="reset-btn" onclick="resetFilters()">Reset filters</button>
+    </div>
+  </div>
+
+  <div class="tiles" id="tiles">
+    <div class="tile" style="border-left-color:#5E8FD0"><div class="tile-val" id="k_sites">&ndash;</div><div class="tile-lbl">Sites worked</div></div>
+    <div class="tile" style="border-left-color:#2d6a4f"><div class="tile-val" id="k_dist">&ndash;</div><div class="tile-lbl">Distance covered</div></div>
+    <div class="tile" style="border-left-color:#DF6B35"><div class="tile-val" id="k_size">&ndash;</div><div class="tile-lbl">Infestation size controlled</div></div>
+    <div class="tile" style="border-left-color:#8257C2"><div class="tile-val" id="k_species">&ndash;</div><div class="tile-lbl">Pest plant species</div></div>
+    <div class="tile" style="border-left-color:#41546D"><div class="tile-val" id="k_conts">&ndash;</div><div class="tile-lbl">Contractors</div></div>
+  </div>
+  <p class="updated" id="updated"></p>
+</div>
+<script>
+  // KPI tiles — headline figures across points (infestation) + tracks (distance).
+  const FILTERS = ['FinYr', 'SiteID', 'ProgrammeType'];
+  let points = [], tracks = [];
+
+  const fmt = n => Math.round(n).toLocaleString('en-NZ');
+
+  fetch('./dashboard_data.json')
+    .then(r => r.json())
+    .then(data => {
+      // Infestation figures come from pest-plant control points only.
+      points = (data.points || []).filter(d => d.ActivityType !== 'Pest Animal Control');
+      tracks = (data.tracks || []);
+      document.getElementById('updated').textContent = 'Generated: ' + data.generated_at;
+      buildFinYr();
+      buildSiteOptions();
+      buildOptions('ProgrammeType');
+      compute();
+    })
+    .catch(() => { document.getElementById('tiles').innerHTML = '<p class="empty">Failed to load dashboard data.</p>'; });
+
+  const allRows = () => points.concat(tracks);
+
+  function buildFinYr() {
+    const sel = document.getElementById('f_FinYr');
+    const vals = [...new Set(allRows().map(d => d.FinYr).filter(v => v != null && v !== ''))].sort();
+    sel.innerHTML = '<option value="__ALL__">All years</option>';
+    vals.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
+  }
+
+  function buildSiteOptions() {
+    const sel = document.getElementById('f_SiteID');
+    const nameById = {};
+    allRows().forEach(d => { if (d.SiteID != null && d.SiteID !== '' && !(d.SiteID in nameById)) nameById[d.SiteID] = d.SiteName || d.SiteID; });
+    const ids = Object.keys(nameById).sort((a, b) => String(nameById[a]).localeCompare(String(nameById[b])));
+    sel.innerHTML = '<option value="__ALL__">All sites</option>';
+    ids.forEach(id => { const o = document.createElement('option'); o.value = id; o.textContent = nameById[id] + ' (' + id + ')'; sel.appendChild(o); });
+  }
+
+  function buildOptions(field) {
+    const sel = document.getElementById('f_' + field);
+    const vals = [...new Set(allRows().map(d => d[field]).filter(v => v != null && v !== ''))]
+                   .sort((a, b) => String(a).localeCompare(String(b)));
+    sel.innerHTML = '<option value="__ALL__">All</option>';
+    vals.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
+  }
+
+  function filt(arr) {
+    return arr.filter(d => FILTERS.every(f => {
+      const v = document.getElementById('f_' + f).value;
+      return v === '__ALL__' || String(d[f]) === v;
+    }));
+  }
+
+  function setVal(id, val, unit) {
+    document.getElementById(id).innerHTML = val + (unit ? ' <span class="tile-unit">' + unit + '</span>' : '');
+  }
+
+  function compute() {
+    const p = filt(points), t = filt(tracks);
+    const sites = new Set([...p, ...t].map(d => d.SiteID).filter(v => v != null && v !== ''));
+    const dist = t.reduce((s, d) => s + (Number(d.Distance_Km) || 0), 0);
+    const size = p.reduce((s, d) => s + (Number(d.Size_of_in) || 0), 0);
+    const species = new Set(p.map(d => d.SpeciesID).filter(v => v != null && v !== '' && v !== 'Null'));
+    const conts = new Set([...p, ...t].map(d => d.Cont_name).filter(v => v != null && v !== ''));
+    setVal('k_sites', fmt(sites.size));
+    setVal('k_dist', fmt(dist), 'km');
+    setVal('k_size', fmt(size));
+    setVal('k_species', fmt(species.size));
+    setVal('k_conts', fmt(conts.size));
+
+    const fy = document.getElementById('f_FinYr');
+    const st = document.getElementById('f_SiteID');
+    const fyTxt = fy.value === '__ALL__' ? 'All years' : fy.value;
+    const stTxt = st.value === '__ALL__' ? 'all sites' : st.options[st.selectedIndex].textContent;
+    document.getElementById('scope').textContent = fyTxt + ' · ' + stTxt;
+  }
+
+  function resetFilters() {
+    FILTERS.forEach(f => document.getElementById('f_' + f).value = '__ALL__');
+    compute();
+  }
+
+  function togglePanel() { document.getElementById('panel').classList.toggle('open'); }
+</script>
+</body>
+</html>

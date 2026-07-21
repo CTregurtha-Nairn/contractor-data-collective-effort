@@ -66,24 +66,46 @@
   <p class="updated" id="updated"></p>
 </div>
 <script>
-  // Species chart — grouped bars: sum(Size_of_in) by SpeciesID, one series per FinYr.
-  const CATEGORY = 'SpeciesID';
-  const VALUE    = 'Size_of_in';
-  const FY_COLORS = { '20-21':'#5E8FD0','21-22':'#77B484','22-23':'#DF6B35','23-24':'#DBCF4E','24-25':'#41546D','25-26':'#8257C2' };
-  const FALLBACK = '#9aa5b1';
-  // FinYr drives the series; Site + Programme are the plain filters.
-  const FILTERS = ['SiteID', 'ProgrammeType'];
+  // Species chart — horizontal ranked bars: sum(Size_of_in) by SpeciesID.
+  // Top 15 species by size; the rest roll into a single "Other" bar. Year is a filter.
+  const VALUE = 'Size_of_in';
+  const TOP_N = 15;
+  const BAR_COLOR = '#5E8FD0';
+  const OTHER_COLOR = '#b9c2cc';
+  const FILTERS = ['FinYr', 'SiteID', 'ProgrammeType'];
 
   let rows = [];
   let chart;
 
+  const fmt = n => Math.round(n).toLocaleString('en-NZ');
+
+  // Draw the value at the end of each horizontal bar.
+  const valueLabels = {
+    id: 'valueLabels',
+    afterDatasetsDraw(c) {
+      const { ctx } = c;
+      const meta = c.getDatasetMeta(0);
+      ctx.save();
+      ctx.font = "600 11px 'DM Sans', sans-serif";
+      ctx.fillStyle = '#41546D';
+      ctx.textBaseline = 'middle';
+      meta.data.forEach((bar, i) => {
+        const v = c.data.datasets[0].data[i];
+        if (v == null || v === 0) return;
+        ctx.fillText(fmt(v), bar.x + 6, bar.y);
+      });
+      ctx.restore();
+    }
+  };
+
   fetch('./dashboard_data.json')
     .then(r => r.json())
     .then(data => {
-      rows = (data.points || []).filter(d => d[CATEGORY] != null && d[CATEGORY] !== '' && d[CATEGORY] !== 'Null');
+      rows = (data.points || []).filter(d => d.SpeciesID != null && d.SpeciesID !== '' && d.SpeciesID !== 'Null');
       document.getElementById('updated').textContent = 'Generated: ' + data.generated_at;
       buildFinYr();
-      FILTERS.forEach(f => f === 'SiteID' ? buildSiteOptions() : buildOptions(f));
+      buildSiteOptions();
+      buildOptions('ProgrammeType');
       render();
     })
     .catch(() => showEmpty('Failed to load dashboard data.'));
@@ -96,7 +118,6 @@
   }
 
   function buildSiteOptions() {
-    // One option per SiteID, labelled with its site name — 46 clean sites.
     const sel = document.getElementById('f_SiteID');
     const nameById = {};
     rows.forEach(d => { if (d.SiteID != null && d.SiteID !== '' && !(d.SiteID in nameById)) nameById[d.SiteID] = d.SiteName || d.SiteID; });
@@ -114,68 +135,63 @@
   }
 
   function filteredRows() {
-    const fy = document.getElementById('f_FinYr').value;
-    return rows.filter(d => {
-      if (fy !== '__ALL__' && String(d.FinYr) !== fy) return false;
-      return FILTERS.every(f => {
-        const v = document.getElementById('f_' + f).value;
-        return v === '__ALL__' || String(d[f]) === v;
-      });
-    });
+    return rows.filter(d => FILTERS.every(f => {
+      const v = document.getElementById('f_' + f).value;
+      return v === '__ALL__' || String(d[f]) === v;
+    }));
   }
 
-  function buildChartData() {
-    const data = filteredRows();
-    // Sort species by total infestation size (largest first) so the meaningful bars lead.
-    const totalByCat = {};
-    data.forEach(d => { const c = d[CATEGORY]; totalByCat[c] = (totalByCat[c] || 0) + (Number(d[VALUE]) || 0); });
-    const cats = [...new Set(data.map(d => d[CATEGORY]))]
-                   .sort((a, b) => (totalByCat[b] - totalByCat[a]) || String(a).localeCompare(String(b)));
-    const years = [...new Set(data.map(d => d.FinYr).filter(v => v != null && v !== ''))].sort();
-    // Pivot: category x year -> sum(value)
-    const pivot = {};
-    cats.forEach(c => { pivot[c] = {}; years.forEach(y => pivot[c][y] = 0); });
-    data.forEach(d => {
-      const c = d[CATEGORY], y = d.FinYr;
-      if (c in pivot && y in pivot[c]) pivot[c][y] += (Number(d[VALUE]) || 0);
-    });
-    const datasets = years.map(y => ({
-      label: y,
-      data: cats.map(c => Math.round(pivot[c][y] * 100) / 100),
-      backgroundColor: FY_COLORS[y] || FALLBACK,
-      borderWidth: 0, barPercentage: 0.9, categoryPercentage: 0.85
-    }));
-    return { labels: cats, datasets };
+  function aggregate() {
+    const totals = {};
+    filteredRows().forEach(d => { const c = d.SpeciesID; totals[c] = (totals[c] || 0) + (Number(d[VALUE]) || 0); });
+    const sorted = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
+    const top = sorted.slice(0, TOP_N);
+    const rest = sorted.slice(TOP_N);
+    const labels = top.slice();
+    const values = top.map(c => Math.round(totals[c] * 100) / 100);
+    const colors = top.map(() => BAR_COLOR);
+    if (rest.length) {
+      labels.push('Other (' + rest.length + ' species)');
+      values.push(Math.round(rest.reduce((s, c) => s + totals[c], 0) * 100) / 100);
+      colors.push(OTHER_COLOR);
+    }
+    return { labels, values, colors };
   }
 
   function render() {
     if (!rows.length) { showEmpty('No data yet — run Contractor_Dashboard_Export.py.'); return; }
-    const { labels, datasets } = buildChartData();
+    const { labels, values, colors } = aggregate();
     chart = new Chart(document.getElementById('chart'), {
       type: 'bar',
-      data: { labels, datasets },
+      data: { labels, datasets: [{ label: 'Infestation size', data: values, backgroundColor: colors, borderWidth: 0, borderRadius: 3, barPercentage: 0.85, categoryPercentage: 0.92 }] },
       options: {
+        indexAxis: 'y',
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom', labels: { font: { family: "'DM Sans', sans-serif" }, padding: 14, boxWidth: 12 } } },
+        layout: { padding: { right: 64 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => 'Infestation size: ' + fmt(ctx.parsed.x) } }
+        },
         scales: {
-          x: { grid: { display: false }, ticks: { color: '#000', font: { family: "'DM Sans', sans-serif", size: 10, weight: '600' }, maxRotation: 90, autoSkip: false } },
-          y: { beginAtZero: true, title: { display: true, text: 'Sum of infestation size', font: { family: "'DM Sans', sans-serif", size: 11 } },
-               grid: { color: '#e8e8e8' }, ticks: { font: { family: "'DM Sans', sans-serif" } } }
+          x: { beginAtZero: true, title: { display: true, text: 'Sum of infestation size', font: { family: "'DM Sans', sans-serif", size: 11 } },
+               grid: { color: '#e8e8e8' }, ticks: { font: { family: "'DM Sans', sans-serif" } } },
+          y: { grid: { display: false }, ticks: { color: '#000', autoSkip: false, font: { family: "'DM Sans', sans-serif", size: 11 } } }
         }
-      }
+      },
+      plugins: [valueLabels]
     });
   }
 
   function updateChart() {
     if (!chart) return;
-    const { labels, datasets } = buildChartData();
+    const { labels, values, colors } = aggregate();
     chart.data.labels = labels;
-    chart.data.datasets = datasets;
+    chart.data.datasets[0].data = values;
+    chart.data.datasets[0].backgroundColor = colors;
     chart.update();
   }
 
   function resetFilters() {
-    document.getElementById('f_FinYr').value = '__ALL__';
     FILTERS.forEach(f => document.getElementById('f_' + f).value = '__ALL__');
     updateChart();
   }
