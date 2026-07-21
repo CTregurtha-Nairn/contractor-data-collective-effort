@@ -78,6 +78,7 @@ log = logging.getLogger(__name__)
 POINT_FIELDS = [
     "Cont_name", "SiteID", "SiteName", "FinYr",
     "SpeciesID", "Age_class", "Size_of_in",
+    "Size_sqm",  # area in m² — only recorded by Kaitiaki o Ngahere (null for others)
     "ProgrammeType", "ActivityType",
 ]
 TRACK_FIELDS = [
@@ -121,7 +122,7 @@ def trim_records(df: pd.DataFrame, fields: list) -> list:
     out = df[keep].copy()
 
     # Normalise types so JSON is tidy: strip strings, numeric size/distance.
-    for col in ("Size_of_in", "Distance_Km"):
+    for col in ("Size_of_in", "Size_sqm", "Distance_Km"):
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce")
     for col in out.columns:
