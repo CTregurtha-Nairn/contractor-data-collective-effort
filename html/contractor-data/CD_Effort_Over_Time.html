@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Infestation Size by Species</title>
+  <title>Effort Over Time</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
@@ -32,6 +32,7 @@
     select:focus{outline:none;border-color:#273747}
     .reset-btn{width:100%;margin-top:4px;background:#f0f2f4;color:#273747;border:none;border-radius:6px;padding:8px;cursor:pointer;font-size:0.8rem;font-family:inherit;font-weight:500}
     .reset-btn:hover{background:#e2e6ea}
+    .note{color:#8a94a0;font-size:0.66rem;line-height:1.35;margin:4px 2px 0;max-width:80%}
     .updated{color:#aaa;font-size:.62em;position:absolute;bottom:4px;right:8px;margin:0}
     .empty{padding:20px;color:#888;font-size:0.9rem}
   </style>
@@ -39,7 +40,7 @@
 <body>
 <div class="wrap">
   <div class="hd">
-    <div class="title" id="chartTitle">Infestation Size by Species</div>
+    <div class="title" id="chartTitle">Effort Over Time</div>
     <div class="hd-actions">
       <button class="print-btn" onclick="exportChart()" title="Download as PNG">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -55,74 +56,46 @@
   <div class="panel" id="panel">
     <div class="panel-hd"><span>Filter</span><button class="panel-close" onclick="togglePanel()">&#x2715;</button></div>
     <div class="panel-body">
-      <div class="fg"><div class="fl">Financial Year</div><select id="f_FinYr" onchange="updateChart()"></select></div>
       <div class="fg"><div class="fl">Site</div><select id="f_SiteID" onchange="updateChart()"></select></div>
+      <div class="fg"><div class="fl">Contractor</div><select id="f_Cont_name" onchange="updateChart()"></select></div>
       <div class="fg"><div class="fl">Programme</div><select id="f_ProgrammeType" onchange="updateChart()"></select></div>
       <button class="reset-btn" onclick="resetFilters()">Reset filters</button>
     </div>
   </div>
 
   <div class="chart-wrap"><canvas id="chart"></canvas></div>
+  <p class="note">Distance covered is the length of pest-plant control tracks recorded each year &mdash; a proxy for on-ground effort. Read alongside the pest-plant trend chart.</p>
   <p class="updated" id="updated"></p>
 </div>
 <script>
-  // Species chart — horizontal ranked bars: sum(Size_of_in) by SpeciesID.
-  // Top 15 species by size; the rest roll into a single "Other" bar. Year is a filter.
-  const VALUE = 'Size_of_in';
-  const TOP_N = 15;
-  const BAR_COLOR = '#5E8FD0';
-  const OTHER_COLOR = '#b9c2cc';
-  const FILTERS = ['FinYr', 'SiteID', 'ProgrammeType'];
+  // Effort chart — single line: sum(Distance_Km) per FinYr for the selected scope.
+  const VALUE = 'Distance_Km';
+  const LINE_COLOR = '#2d6a4f';
+  const FILTERS = ['SiteID', 'Cont_name', 'ProgrammeType'];
 
   let rows = [];
+  let YEARS = [];
   let chart;
 
   const fmt = n => Math.round(n).toLocaleString('en-NZ');
 
-  // Draw the value at the end of each horizontal bar.
-  const valueLabels = {
-    id: 'valueLabels',
-    afterDatasetsDraw(c) {
-      const { ctx } = c;
-      const meta = c.getDatasetMeta(0);
-      ctx.save();
-      ctx.font = "600 11px 'DM Sans', sans-serif";
-      ctx.fillStyle = '#41546D';
-      ctx.textBaseline = 'middle';
-      meta.data.forEach((bar, i) => {
-        const v = c.data.datasets[0].data[i];
-        if (v == null || v === 0) return;
-        ctx.fillText(fmt(v), bar.x + 6, bar.y);
-      });
-      ctx.restore();
-    }
-  };
-
   fetch('./dashboard_data.json')
     .then(r => r.json())
     .then(data => {
-      rows = (data.points || []).filter(d => d.SpeciesID != null && d.SpeciesID !== '' && d.SpeciesID !== 'Null');
+      rows = (data.tracks || []);
+      YEARS = [...new Set(rows.map(d => d.FinYr).filter(v => v != null && v !== ''))].sort();
       document.getElementById('updated').textContent = 'Generated: ' + data.generated_at;
-      buildFinYr();
-      buildSiteOptions();
-      buildOptions('ProgrammeType');
+      FILTERS.forEach(f => f === 'SiteID' ? buildSiteOptions() : buildOptions(f));
       render();
     })
     .catch(() => showEmpty('Failed to load dashboard data.'));
-
-  function buildFinYr() {
-    const sel = document.getElementById('f_FinYr');
-    const vals = [...new Set(rows.map(d => d.FinYr).filter(v => v != null && v !== ''))].sort();
-    sel.innerHTML = '<option value="__ALL__">All years</option>';
-    vals.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
-  }
 
   function buildSiteOptions() {
     const sel = document.getElementById('f_SiteID');
     const nameById = {};
     rows.forEach(d => { if (d.SiteID != null && d.SiteID !== '' && !(d.SiteID in nameById)) nameById[d.SiteID] = d.SiteName || d.SiteID; });
     const ids = Object.keys(nameById).sort((a, b) => String(nameById[a]).localeCompare(String(nameById[b])));
-    sel.innerHTML = '<option value="__ALL__">All sites</option>';
+    sel.innerHTML = '<option value="__ALL__">All sites (whole programme)</option>';
     ids.forEach(id => { const o = document.createElement('option'); o.value = id; o.textContent = nameById[id] + ' (' + id + ')'; sel.appendChild(o); });
   }
 
@@ -142,52 +115,46 @@
   }
 
   function aggregate() {
-    const totals = {};
-    filteredRows().forEach(d => { const c = d.SpeciesID; totals[c] = (totals[c] || 0) + (Number(d[VALUE]) || 0); });
-    const sorted = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
-    const top = sorted.slice(0, TOP_N);
-    const rest = sorted.slice(TOP_N);
-    const labels = top.slice();
-    const values = top.map(c => Math.round(totals[c] * 100) / 100);
-    const colors = top.map(() => BAR_COLOR);
-    if (rest.length) {
-      labels.push('Other (' + rest.length + ' species)');
-      values.push(Math.round(rest.reduce((s, c) => s + totals[c], 0) * 100) / 100);
-      colors.push(OTHER_COLOR);
-    }
-    return { labels, values, colors };
+    const sizeBy = {}, hasRow = {};
+    YEARS.forEach(y => { sizeBy[y] = 0; hasRow[y] = false; });
+    filteredRows().forEach(d => {
+      const y = d.FinYr;
+      if (!(y in sizeBy)) return;
+      hasRow[y] = true;
+      sizeBy[y] += (Number(d[VALUE]) || 0);
+    });
+    return YEARS.map(y => hasRow[y] ? Math.round(sizeBy[y] * 100) / 100 : null);
   }
 
   function render() {
     if (!rows.length) { showEmpty('No data yet — run Contractor_Dashboard_Export.py.'); return; }
-    const { labels, values, colors } = aggregate();
     chart = new Chart(document.getElementById('chart'), {
-      type: 'bar',
-      data: { labels, datasets: [{ label: 'Infestation size', data: values, backgroundColor: colors, borderWidth: 0, borderRadius: 3, barPercentage: 0.85, categoryPercentage: 0.92 }] },
+      type: 'line',
+      data: { labels: YEARS, datasets: [{
+        label: 'Distance covered (km)', data: aggregate(),
+        borderColor: LINE_COLOR, backgroundColor: LINE_COLOR + '22',
+        borderWidth: 2, tension: 0.25, fill: true, spanGaps: false,
+        pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: LINE_COLOR
+      }] },
       options: {
-        indexAxis: 'y',
         responsive: true, maintainAspectRatio: false,
-        layout: { padding: { right: 64 } },
+        interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
-          tooltip: { callbacks: { label: ctx => 'Infestation size: ' + fmt(ctx.parsed.x) } }
+          tooltip: { callbacks: { title: items => items[0].label, label: ctx => fmt(ctx.parsed.y) + ' km' } }
         },
         scales: {
-          x: { beginAtZero: true, title: { display: true, text: 'Sum of infestation size', font: { family: "'DM Sans', sans-serif", size: 11 } },
-               grid: { color: '#e8e8e8' }, ticks: { font: { family: "'DM Sans', sans-serif" } } },
-          y: { grid: { display: false }, ticks: { color: '#000', autoSkip: false, font: { family: "'DM Sans', sans-serif", size: 11 } } }
+          x: { grid: { display: false }, ticks: { color: '#000', font: { family: "'DM Sans', sans-serif", size: 11, weight: '600' } } },
+          y: { beginAtZero: true, title: { display: true, text: 'Distance covered (Km)', font: { family: "'DM Sans', sans-serif", size: 11 } },
+               grid: { color: '#e8e8e8' }, ticks: { font: { family: "'DM Sans', sans-serif" } } }
         }
-      },
-      plugins: [valueLabels]
+      }
     });
   }
 
   function updateChart() {
     if (!chart) return;
-    const { labels, values, colors } = aggregate();
-    chart.data.labels = labels;
-    chart.data.datasets[0].data = values;
-    chart.data.datasets[0].backgroundColor = colors;
+    chart.data.datasets[0].data = aggregate();
     chart.update();
   }
 

@@ -55,7 +55,7 @@
   <div class="panel" id="panel">
     <div class="panel-hd"><span>Filter</span><button class="panel-close" onclick="togglePanel()">&#x2715;</button></div>
     <div class="panel-body">
-      <div class="fg"><div class="fl">Financial Year</div><select id="f_FinYr" onchange="updateChart()"></select></div>
+      <div class="fg"><div class="fl">Site</div><select id="f_SiteID" onchange="updateChart()"></select></div>
       <div class="fg"><div class="fl">Programme</div><select id="f_ProgrammeType" onchange="updateChart()"></select></div>
       <div class="fg"><div class="fl">Activity Type</div><select id="f_ActivityType" onchange="updateChart()"></select></div>
       <button class="reset-btn" onclick="resetFilters()">Reset filters</button>
@@ -66,32 +66,58 @@
   <p class="updated" id="updated"></p>
 </div>
 <script>
-  // Distance chart — grouped bars: sum(Distance_Km) by Cont_name, one series per FinYr.
+  // Distance chart — horizontal stacked bars: sum(Distance_Km) by Cont_name, stacked by FinYr.
+  // Contractors ranked by total distance; year is the stack (not a filter).
   const CATEGORY = 'Cont_name';
   const VALUE    = 'Distance_Km';
   const FY_COLORS = { '20-21':'#5E8FD0','21-22':'#77B484','22-23':'#DF6B35','23-24':'#DBCF4E','24-25':'#41546D','25-26':'#8257C2' };
   const FALLBACK = '#9aa5b1';
-  const FILTERS = ['ProgrammeType', 'ActivityType'];   // FinYr drives the series
+  const FILTERS = ['SiteID', 'ProgrammeType', 'ActivityType'];
 
   let rows = [];
+  let YEARS = [];
   let chart;
+
+  const fmt = n => Math.round(n).toLocaleString('en-NZ');
+
+  // Draw the row total at the end of each stacked bar.
+  const totalLabels = {
+    id: 'totalLabels',
+    afterDatasetsDraw(c) {
+      const { ctx } = c;
+      const last = c.getDatasetMeta(c.data.datasets.length - 1);
+      ctx.save();
+      ctx.font = "600 11px 'DM Sans', sans-serif";
+      ctx.fillStyle = '#41546D';
+      ctx.textBaseline = 'middle';
+      last.data.forEach((bar, i) => {
+        let total = 0;
+        c.data.datasets.forEach(ds => { total += (Number(ds.data[i]) || 0); });
+        if (!total) return;
+        ctx.fillText(fmt(total) + ' km', bar.x + 6, bar.y);
+      });
+      ctx.restore();
+    }
+  };
 
   fetch('./dashboard_data.json')
     .then(r => r.json())
     .then(data => {
       rows = (data.tracks || []).filter(d => d[CATEGORY] != null && d[CATEGORY] !== '');
+      YEARS = [...new Set(rows.map(d => d.FinYr).filter(v => v != null && v !== ''))].sort();
       document.getElementById('updated').textContent = 'Generated: ' + data.generated_at;
-      buildFinYr();
-      FILTERS.forEach(f => buildOptions(f));
+      FILTERS.forEach(f => f === 'SiteID' ? buildSiteOptions() : buildOptions(f));
       render();
     })
     .catch(() => showEmpty('Failed to load dashboard data.'));
 
-  function buildFinYr() {
-    const sel = document.getElementById('f_FinYr');
-    const vals = [...new Set(rows.map(d => d.FinYr).filter(v => v != null && v !== ''))].sort();
-    sel.innerHTML = '<option value="__ALL__">All years</option>';
-    vals.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
+  function buildSiteOptions() {
+    const sel = document.getElementById('f_SiteID');
+    const nameById = {};
+    rows.forEach(d => { if (d.SiteID != null && d.SiteID !== '' && !(d.SiteID in nameById)) nameById[d.SiteID] = d.SiteName || d.SiteID; });
+    const ids = Object.keys(nameById).sort((a, b) => String(nameById[a]).localeCompare(String(nameById[b])));
+    sel.innerHTML = '<option value="__ALL__">All sites</option>';
+    ids.forEach(id => { const o = document.createElement('option'); o.value = id; o.textContent = nameById[id] + ' (' + id + ')'; sel.appendChild(o); });
   }
 
   function buildOptions(field) {
@@ -103,31 +129,29 @@
   }
 
   function filteredRows() {
-    const fy = document.getElementById('f_FinYr').value;
-    return rows.filter(d => {
-      if (fy !== '__ALL__' && String(d.FinYr) !== fy) return false;
-      return FILTERS.every(f => {
-        const v = document.getElementById('f_' + f).value;
-        return v === '__ALL__' || String(d[f]) === v;
-      });
-    });
+    return rows.filter(d => FILTERS.every(f => {
+      const v = document.getElementById('f_' + f).value;
+      return v === '__ALL__' || String(d[f]) === v;
+    }));
   }
 
   function buildChartData() {
     const data = filteredRows();
-    const cats = [...new Set(data.map(d => d[CATEGORY]))].sort((a, b) => String(a).localeCompare(String(b)));
-    const years = [...new Set(data.map(d => d.FinYr).filter(v => v != null && v !== ''))].sort();
+    // Total distance per contractor, ranked largest first (biggest at top on a horizontal axis).
+    const totalByCat = {};
+    data.forEach(d => { const c = d[CATEGORY]; totalByCat[c] = (totalByCat[c] || 0) + (Number(d[VALUE]) || 0); });
+    const cats = Object.keys(totalByCat).sort((a, b) => totalByCat[a] - totalByCat[b]); // ascending → largest ends at top
     const pivot = {};
-    cats.forEach(c => { pivot[c] = {}; years.forEach(y => pivot[c][y] = 0); });
+    cats.forEach(c => { pivot[c] = {}; YEARS.forEach(y => pivot[c][y] = 0); });
     data.forEach(d => {
       const c = d[CATEGORY], y = d.FinYr;
       if (c in pivot && y in pivot[c]) pivot[c][y] += (Number(d[VALUE]) || 0);
     });
-    const datasets = years.map(y => ({
+    const datasets = YEARS.map(y => ({
       label: y,
       data: cats.map(c => Math.round(pivot[c][y] * 100) / 100),
       backgroundColor: FY_COLORS[y] || FALLBACK,
-      borderWidth: 0, barPercentage: 0.9, categoryPercentage: 0.85
+      borderWidth: 0
     }));
     return { labels: cats, datasets };
   }
@@ -139,14 +163,20 @@
       type: 'bar',
       data: { labels, datasets },
       options: {
+        indexAxis: 'y',
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom', labels: { font: { family: "'DM Sans', sans-serif" }, padding: 14, boxWidth: 12 } } },
+        layout: { padding: { right: 72 } },
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { family: "'DM Sans', sans-serif" }, padding: 14, boxWidth: 12 } },
+          tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + fmt(ctx.parsed.x) + ' km' } }
+        },
         scales: {
-          x: { grid: { display: false }, ticks: { color: '#000', font: { family: "'DM Sans', sans-serif", size: 10, weight: '600' }, maxRotation: 90, autoSkip: false } },
-          y: { beginAtZero: true, title: { display: true, text: 'Distance (Km)', font: { family: "'DM Sans', sans-serif", size: 11 } },
-               grid: { color: '#e8e8e8' }, ticks: { font: { family: "'DM Sans', sans-serif" } } }
+          x: { stacked: true, beginAtZero: true, title: { display: true, text: 'Distance (Km)', font: { family: "'DM Sans', sans-serif", size: 11 } },
+               grid: { color: '#e8e8e8' }, ticks: { font: { family: "'DM Sans', sans-serif" } } },
+          y: { stacked: true, grid: { display: false }, ticks: { color: '#000', autoSkip: false, font: { family: "'DM Sans', sans-serif", size: 11 } } }
         }
-      }
+      },
+      plugins: [totalLabels]
     });
   }
 
@@ -159,7 +189,6 @@
   }
 
   function resetFilters() {
-    document.getElementById('f_FinYr').value = '__ALL__';
     FILTERS.forEach(f => document.getElementById('f_' + f).value = '__ALL__');
     updateChart();
   }
