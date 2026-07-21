@@ -20,6 +20,9 @@ CONTEXT.md
 # --- Local reference: AGOL Experience Builder config dump (not published) ---
 Contractor_Collective_Effort_Dashboard_AGOL_Item.json
 
+# --- Editor ---
+.vscode/
+
 # --- OS files ---
 .DS_Store
 Thumbs.db
