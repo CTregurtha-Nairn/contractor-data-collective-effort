@@ -125,6 +125,8 @@
   const el = id => document.getElementById(id);
 
   let points = [], tracks = [], animalPoints = [], animalTracks = [], rawAll = [], YEARS = [];
+  let contCanon = {};                       // raw contractor name -> canonical spelling
+  const canonCont = n => contCanon[n] || n; // collapses case-only variants (e.g. "o"/"O" Ngahere)
   let cSpecies, cAge, cDistance, cEffort, cTrendDiv, cTrendSize, cAnimal;
 
   // ---- value/total label plugins (attached per chart) ----
@@ -141,6 +143,7 @@
     tracks       = rawTracks.filter(d => !isAnimal(d));   // pest-plant tracks
     animalTracks = rawTracks.filter(isAnimal);            // pest-animal tracks
     rawAll       = rawPoints.concat(rawTracks);
+    buildContractorCanon();
     YEARS  = [...new Set(rawAll.map(d => d.FinYr).filter(v => v != null && v !== ''))].sort();
     el('gen').textContent = 'Generated: ' + data.generated_at;
     buildFilters();
@@ -158,6 +161,21 @@
   }
   function uniq(field, rows){ return [...new Set(rows.map(d => d[field]).filter(v => v != null && v !== ''))].sort((a,b)=>String(a).localeCompare(String(b))); }
 
+  // Merge case-only contractor-name variants: each lowercased key maps to its most common spelling.
+  function buildContractorCanon(){
+    const counts = {};   // key -> { originalSpelling: count }
+    rawAll.forEach(d => {
+      const n = d.Cont_name; if (n == null || n === '') return;
+      const k = String(n).trim().toLowerCase().replace(/\s+/g, ' ');
+      (counts[k] = counts[k] || {})[n] = (counts[k][n] || 0) + 1;
+    });
+    contCanon = {};
+    Object.values(counts).forEach(variants => {
+      const best = Object.keys(variants).sort((a,b)=>variants[b]-variants[a])[0];
+      Object.keys(variants).forEach(orig => { contCanon[orig] = best; });
+    });
+  }
+
   function buildFilters(){
     fillSelect('f_FinYr', YEARS.map(y=>({value:y,text:y})), 'All years');
     const nameById = {};
@@ -167,13 +185,14 @@
     fillSelect('f_ProgrammeType', uniq('ProgrammeType', rawAll).map(v=>({value:v,text:v})), 'All programmes');
     // Activity options are pest-plant only; pest-animal is shown in its own card and ignores this filter.
     fillSelect('f_ActivityType', uniq('ActivityType', allRows()).map(v=>({value:v,text:v})), 'All activities');
-    fillSelect('f_Cont_name', uniq('Cont_name', rawAll).map(v=>({value:v,text:v})), 'All contractors');
+    const conts = [...new Set(rawAll.map(d=>canonCont(d.Cont_name)).filter(v=>v!=null&&v!==''))].sort((a,b)=>String(a).localeCompare(String(b)));
+    fillSelect('f_Cont_name', conts.map(v=>({value:v,text:v})), 'All contractors');
   }
 
   const FV = id => el(id).value;
   function matchRow(d, ignore){
     ignore = ignore || [];
-    const chk = k => ignore.includes(k) || FV('f_'+k) === '__ALL__' || String(d[k]) === FV('f_'+k);
+    const chk = k => { if (ignore.includes(k)) return true; const v = FV('f_'+k); if (v === '__ALL__') return true; const dv = k === 'Cont_name' ? canonCont(d[k]) : d[k]; return String(dv) === v; };
     return chk('FinYr') && chk('SiteID') && chk('ProgrammeType') && chk('ActivityType') && chk('Cont_name');
   }
   const fpoints = ignore => points.filter(d => matchRow(d, ignore));
@@ -198,10 +217,10 @@
   function dataDistance(){
     const rows = ftracks(IGNORE_FY);
     const tot = {};
-    rows.forEach(d => { const c = d.Cont_name; if (!c) return; tot[c] = (tot[c]||0) + (Number(d.Distance_Km)||0); });
+    rows.forEach(d => { const c = canonCont(d.Cont_name); if (!c) return; tot[c] = (tot[c]||0) + (Number(d.Distance_Km)||0); });
     const cats = Object.keys(tot).sort((a,b)=>tot[a]-tot[b]);   // ascending → largest at top on horizontal axis
     const pivot = {}; cats.forEach(c => { pivot[c] = {}; YEARS.forEach(y => pivot[c][y] = 0); });
-    rows.forEach(d => { const c = d.Cont_name, y = d.FinYr; if (c in pivot && y in pivot[c]) pivot[c][y] += (Number(d.Distance_Km)||0); });
+    rows.forEach(d => { const c = canonCont(d.Cont_name), y = d.FinYr; if (c in pivot && y in pivot[c]) pivot[c][y] += (Number(d.Distance_Km)||0); });
     const datasets = YEARS.map(y => ({ label:y, data: cats.map(c=>Math.round(pivot[c][y]*100)/100), backgroundColor: FY_COLORS[y]||FALLBACK, borderWidth:0 }));
     return { labels: cats, datasets };
   }
@@ -313,7 +332,7 @@
     const p = fAnimalP(), t = fAnimalT();
     const animals = p.reduce((s,d)=>s+(Number(d.Size_of_in)||0),0);
     const dist    = t.reduce((s,d)=>s+(Number(d.Distance_Km)||0),0);
-    const conts   = new Set([...p, ...t].map(d=>d.Cont_name).filter(v=>v!=null&&v!==''));
+    const conts   = new Set([...p, ...t].map(d=>canonCont(d.Cont_name)).filter(v=>v!=null&&v!==''));
     el('animal_note').textContent = p.length
       ? fmt(animals)+' animals controlled · '+fmt(dist)+' km control tracks · '+conts.size+' contractor'+(conts.size===1?'':'s')+'. Deer control — a small but growing dataset.'
       : 'No pest-animal control records for the current filters.';
@@ -325,8 +344,8 @@
     const dist    = t.reduce((s,d)=>s+(Number(d.Distance_Km)||0),0);
     const size    = p.reduce((s,d)=>s+(Number(d.Size_of_in)||0),0);
     const species = new Set(p.map(d=>d.SpeciesID).filter(v=>v!=null&&v!==''&&v!=='Null'));
-    const conts   = new Set([...p, ...t].map(d=>d.Cont_name).filter(v=>v!=null&&v!==''));
-    const area    = p.reduce((s,d)=>s+(Number(d.Size_sqm)||0),0);   // only Kaitiaki records this
+    const conts   = new Set([...p, ...t].map(d=>canonCont(d.Cont_name)).filter(v=>v!=null&&v!==''));
+    const area    = p.reduce((s,d)=>s+(Number(d.Size_sqm)||0),0);   // mostly Kaitiaki records this
     el('k_sites').textContent = fmt(sites.size);
     el('k_dist').innerHTML = fmt(dist) + ' <span class="tile-unit">km</span>';
     el('k_size').textContent = fmt(size);
