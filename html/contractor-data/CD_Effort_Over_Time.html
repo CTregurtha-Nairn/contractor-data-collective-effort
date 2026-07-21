@@ -13,6 +13,7 @@
     .chart-wrap{flex:1;min-height:0;position:relative}
     .hd{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;gap:16px}
     .title{font-size:1rem;font-weight:600;color:#1a1a2e;line-height:1.4}
+    .scope{font-size:0.72rem;color:#8a94a0;margin-top:2px}
     .hd-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
     .filter-btn{background:#273747;color:#fff;border:none;border-radius:6px;padding:7px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:0.78rem;font-family:inherit;white-space:nowrap;flex-shrink:0}
     .filter-btn:hover{background:#3a4f63}
@@ -40,7 +41,10 @@
 <body>
 <div class="wrap">
   <div class="hd">
-    <div class="title" id="chartTitle">Effort Over Time</div>
+    <div>
+      <div class="title" id="chartTitle">Effort Over Time</div>
+      <div class="scope" id="scope"></div>
+    </div>
     <div class="hd-actions">
       <button class="print-btn" onclick="exportChart()" title="Download as PNG">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -87,6 +91,7 @@
       document.getElementById('updated').textContent = 'Generated: ' + data.generated_at;
       FILTERS.forEach(f => f === 'SiteID' ? buildSiteOptions() : buildOptions(f));
       render();
+      updateScope();
     })
     .catch(() => showEmpty('Failed to load dashboard data.'));
 
@@ -156,6 +161,18 @@
     if (!chart) return;
     chart.data.datasets[0].data = aggregate();
     chart.update();
+    updateScope();
+  }
+
+  // Live subtitle: lists every active (non-"All") filter for this chart.
+  function updateScope() {
+    const el = document.getElementById('scope');
+    if (!el) return;
+    const parts = [];
+    document.querySelectorAll('.panel-body select').forEach(sel => {
+      if (sel.value !== '__ALL__') parts.push(sel.options[sel.selectedIndex].textContent);
+    });
+    el.textContent = parts.length ? parts.join(' · ') : 'All records';
   }
 
   function resetFilters() {
@@ -170,8 +187,10 @@
     if (!chart) return;
     const src = document.getElementById('chart');
     const title = document.getElementById('chartTitle').textContent;
+    const scope = (document.getElementById('scope') || {}).textContent || '';
+    const hasScope = scope && scope !== 'All records';
     const dpr = window.devicePixelRatio || 1;
-    const hdrH = Math.round(54 * dpr), padX = Math.round(18 * dpr);
+    const hdrH = Math.round((hasScope ? 66 : 54) * dpr), padX = Math.round(18 * dpr);
     const out = document.createElement('canvas');
     out.width = src.width; out.height = src.height + hdrH;
     const ctx = out.getContext('2d');
@@ -179,6 +198,7 @@
     ctx.fillStyle = '#1a1a2e';
     ctx.font = `600 ${Math.round(14 * dpr)}px Arial, sans-serif`;
     ctx.fillText(title, padX, Math.round(22 * dpr));
+    if (hasScope) { ctx.fillStyle = '#5a6b7b'; ctx.font = `500 ${Math.round(11 * dpr)}px Arial, sans-serif`; ctx.fillText(scope, padX, Math.round(40 * dpr)); }
     ctx.drawImage(src, 0, hdrH);
     const safe = title.normalize('NFD').replace(/[̀-ͯ]/g, '')
                       .replace(/[^a-zA-Z0-9\s-]/g, '').trim().replace(/\s+/g, '_');
