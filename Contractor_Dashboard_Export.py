@@ -78,12 +78,15 @@ log = logging.getLogger(__name__)
 POINT_FIELDS = [
     "Cont_name", "SiteID", "SiteName", "FinYr",
     "SpeciesID", "Age_class", "Size_of_in",
-    "Size_sqm",  # area in m² — only recorded by Kaitiaki o Ngahere (null for others)
+    "Size_sqm",   # area in m² — only recorded by Kaitiaki o Ngahere (null for others)
+    "Comments",   # free-text notes; some contractors log animal counts here
     "ProgrammeType", "ActivityType",
 ]
 TRACK_FIELDS = [
     "Cont_name", "SiteID", "SiteName", "FinYr",
-    "Distance_Km", "ProgrammeType", "ActivityType",
+    "Distance_Km",
+    "Comments",   # Wild Animal Control NZ logs rabbit/hare/hedgehog counts here
+    "ProgrammeType", "ActivityType",
 ]
 
 
