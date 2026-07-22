@@ -141,8 +141,16 @@ def fetch_layer_records(item, rest_id: int, species_map: dict) -> list:
 
     for col in out.columns:
         low = col.lower()
-        if any(h in low for h in NUMERIC_HINTS):
-            out[col] = pd.to_numeric(out[col], errors="coerce")
+        if not any(h in low for h in NUMERIC_HINTS):
+            continue
+        coerced = pd.to_numeric(out[col], errors="coerce")
+        # Guard: some TEXT fields have a numeric-hint substring in their name
+        # (e.g. "operatingArea" contains "area", "SiteName" would contain none but
+        # region names are text). If coercing wipes out real values, it's a text
+        # field masquerading — keep the original strings.
+        before = out[col].notna().sum()
+        if before == 0 or coerced.notna().sum() >= before * 0.5:
+            out[col] = coerced
     for col in out.columns:
         if out[col].dtype == object:
             out[col] = out[col].apply(lambda v: v.strip() if isinstance(v, str) else v)
