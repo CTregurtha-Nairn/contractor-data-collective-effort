@@ -55,6 +55,7 @@
       <div class="fg"><label>Programme</label><select id="f_Programme" onchange="applyFilters()"></select></div>
       <div class="fg"><label>Species</label><select id="f_Species" onchange="applyFilters()"></select></div>
       <div class="fg"><label>Contractor</label><select id="f_Cont_name" onchange="applyFilters()"></select></div>
+      <div class="fg"><label>Base Site ID</label><select id="f_BaseSiteID" onchange="applyFilters()"></select></div>
       <button class="reset-btn" onclick="resetFilters()">Reset</button>
     </div>
     <div class="scope-line">Showing: <b id="scope">all records</b> &nbsp;·&nbsp; <span style="color:#8fa3b8">Eradication &amp; Progressive Containment programmes. Financial-year filter applies to bar charts; trend/effort always span all years.</span></div>
@@ -73,7 +74,7 @@
 
     <div class="grid">
       <div class="card">
-        <div class="card-head"><div><div class="card-title">Plants Controlled by Species</div><div class="card-sub">Top 15 by count · rest grouped</div></div>
+        <div class="card-head"><div><div class="card-title">Plants Controlled by Species</div><div class="card-sub">RPMP focus species · <span style="color:#DF6B35">Eradication</span> / <span style="color:#77B484">Prog. Containment</span> · Other = unmapped</div></div>
           <button class="export-btn" onclick="exportSingle('c_species','Plants Controlled by Species',[])">&#8681; PNG</button></div>
         <div class="card-body"><div class="canvas-box"><canvas id="c_species"></canvas></div></div>
       </div>
@@ -98,10 +99,10 @@
       </div>
 
       <div class="card wide">
-        <div class="card-head"><div><div class="card-title">Pest-Plant Trend Over Time</div><div class="card-sub">Diversity &amp; plants controlled across the years</div></div>
+        <div class="card-head"><div><div class="card-title">Pest-Plant Trend Over Time</div><div class="card-sub">Sites worked &amp; plants controlled across the years</div></div>
           <button class="export-btn" onclick="exportTrend()">&#8681; PNG</button></div>
         <div class="card-body">
-          <div class="mini-sub">Pest species diversity &mdash; distinct species recorded</div>
+          <div class="mini-sub">Sites worked &mdash; distinct sites with control recorded</div>
           <div class="canvas-box"><canvas id="c_trend_div"></canvas></div>
           <div class="mini-sub">Total plants controlled &mdash; sum of recorded count</div>
           <div class="canvas-box"><canvas id="c_trend_size"></canvas></div>
@@ -120,8 +121,16 @@
 
 <script>
   const FY_COLORS = { '20-21':'#5E8FD0','21-22':'#77B484','22-23':'#DF6B35','23-24':'#DBCF4E','24-25':'#41546D','25-26':'#8257C2' };
-  const PROG_COLORS = { 'Eradication':'#DF6B35', 'Progressive Containment':'#5E8FD0' };
+  const PROG_COLORS = { 'Eradication':'#DF6B35', 'Progressive Containment':'#77B484' };
   const PROGRAMMES = ['Eradication', 'Progressive Containment'];
+  // Species chart colours by RPMP programme: Eradication (orange), PC-Mapped (green), Other (grey).
+  const SP_COLORS = { 'Eradication':'#DF6B35', 'PC-Mapped':'#77B484', 'Other':'#b9c2cc' };
+  // RPMP species -> programme, by 3-letter code. PC_MAPPED + PC_UNMAPPED are the full lists
+  // from the plan; ERAD is the (screenshot-visible) Eradication list. Any other in-scope
+  // species whose records are dominantly Eradication is treated as Eradication (see classify()).
+  const PC_MAPPED   = new Set(['BAP','BSD','CON','DBY','DMP','EBT','GWO','MPT','MTP','OMB','SCP']);
+  const PC_UNMAPPED = new Set(['AUS','BBY','EGS','EGE','FHT','GOR','HWT','LAG','MPB','NTH','RSG','SCB','SSB','SYB','TUT','VTL','YBG','RAG']);
+  const ERAD        = new Set(['AFG','ALW','ARH','BPF','CBS','CHR','CPS','CAL','CSB','HBA','KNW','NAS','MFG','PLS','QPL','RCY','SNT','SPT']);
   // Operating-area codes = middle segment of BaseSiteID (e.g. "OMB-2-256" -> area 2).
   // The operatingArea field is null in the service, so region is derived from this code.
   // Feilding (code 1) is deliberately omitted — it isn't a used operating area, so its
@@ -134,10 +143,12 @@
   const fmt = n => Math.round(n).toLocaleString('en-NZ');
   const el = id => document.getElementById(id);
 
-  let recs = [], pointRecs = [], lineRecs = [], polyRecs = [], YEARS = [];
+  let recs = [], pointRecs = [], lineRecs = [], polyRecs = [], YEARS = [], SP_CLASS = {};
   let contCanon = {};                       // raw contractor name -> canonical spelling
   const canonCont = n => contCanon[n] || n; // collapses case-only variants
-  let cSpecies, cAge, cDistance, cEffort, cTrendDiv, cTrendSize, cRegion;
+  const spClass = name => SP_CLASS[name] || 'Other';   // species name -> Eradication | PC-Mapped | Other
+  const isFocus = name => { const c = spClass(name); return c === 'Eradication' || c === 'PC-Mapped'; };
+  let cSpecies, cAge, cDistance, cEffort, cTrendSites, cTrendSize, cRegion;
 
   // ---- defensive field accessors (survive minor naming differences in the export) ----
   const num = (d, keys) => { for (const k of keys){ if (k in d && d[k] != null && d[k] !== ''){ const n = Number(d[k]); if (isFinite(n)) return n; } } return 0; };
@@ -169,6 +180,13 @@
     if (/^Progressive Containment/i.test(s)) return 'Progressive Containment';
     return null;
   }
+  // Fine programme (distinguishes Mapped vs Unmapped) — used to derive each species' class.
+  function progFine(pt){
+    const s = String(pt || '').trim();
+    if (/^Eradication/i.test(s)) return 'Eradication';
+    if (/progressive containment/i.test(s)) return /unmapped/i.test(s) ? 'PC-Unmapped' : 'PC-Mapped';
+    return null;
+  }
   function norm(r, bucket, geom){
     r._bucket = bucket; r._geom = geom;
     r.Programme = normProg(projOf(r));
@@ -197,6 +215,7 @@
     lineRecs  = recs.filter(r => r._geom === 'line');
     polyRecs  = recs.filter(r => r._geom === 'polygon');
     buildContractorCanon();
+    buildSpeciesClass();
     YEARS = [...new Set(recs.map(d => d.FinYr).filter(v => v != null && v !== ''))].sort();
     el('gen').textContent = 'Generated: ' + (data.generated_at || '—');
     buildFilters();
@@ -227,13 +246,32 @@
     });
   }
 
+  // Classify each species (by name) into Eradication / PC-Mapped / Other for colouring + the
+  // species filter. RPMP code lists win; anything else in-scope falls back to its data-dominant
+  // fine programme (so a genuine Eradication species missing from the visible list still lands right).
+  function classify(code, dataDom){
+    if (PC_UNMAPPED.has(code)) return 'Other';
+    if (PC_MAPPED.has(code))   return 'PC-Mapped';
+    if (ERAD.has(code))        return 'Eradication';
+    return dataDom === 'Eradication' ? 'Eradication' : 'Other';
+  }
+  function buildSpeciesClass(){
+    const fine = {};   // code -> { fineCat: count }
+    recs.forEach(d => { const code = d.SpeciesID; if (!code) return; const f = progFine(d.projectType); if (!f) return; (fine[code] = fine[code] || {})[f] = (fine[code][f]||0) + 1; });
+    const dom = code => { const c = fine[code] || {}; let b = null, bc = -1; for (const k in c){ if (c[k] > bc){ bc = c[k]; b = k; } } return b; };
+    SP_CLASS = {};
+    recs.forEach(d => { const name = d.SpeciesName; if (!name || name in SP_CLASS) return; SP_CLASS[name] = classify(d.SpeciesID, dom(d.SpeciesID)); });
+  }
+
   function buildFilters(){
     fillSelect('f_FinYr', YEARS.map(y=>({value:y,text:y})), 'All years');
     fillSelect('f_operatingArea', uniq(d=>d.operatingArea).map(v=>({value:v,text:v})), 'All areas');
     fillSelect('f_Programme', PROGRAMMES.filter(p=>recs.some(d=>d.Programme===p)).map(v=>({value:v,text:v})), 'All programmes');
-    fillSelect('f_Species', uniq(d=>d.SpeciesName).map(v=>({value:v,text:v})), 'All species');
+    // Species dropdown: RPMP focus species only (Eradication + Progressive Containment - Mapped).
+    fillSelect('f_Species', uniq(d=>d.SpeciesName).filter(isFocus).map(v=>({value:v,text:v})), 'All species');
     const conts = [...new Set(recs.map(d=>canonCont(d.Cont_name)).filter(v=>v!=null&&v!==''))].sort((a,b)=>String(a).localeCompare(String(b)));
     fillSelect('f_Cont_name', conts.map(v=>({value:v,text:v})), 'All contractors');
+    fillSelect('f_BaseSiteID', uniq(d=>d.BaseSiteID).map(v=>({value:v,text:v})), 'All base sites');
   }
 
   const FV = id => el(id).value;
@@ -241,7 +279,7 @@
     ignore = ignore || [];
     const chk = (id, dv) => { if (ignore.includes(id)) return true; const v = FV(id); return v === '__ALL__' || String(dv) === v; };
     return chk('f_FinYr', d.FinYr) && chk('f_operatingArea', d.operatingArea) && chk('f_Programme', d.Programme)
-        && chk('f_Species', d.SpeciesName) && chk('f_Cont_name', canonCont(d.Cont_name));
+        && chk('f_Species', d.SpeciesName) && chk('f_Cont_name', canonCont(d.Cont_name)) && chk('f_BaseSiteID', d.BaseSiteID);
   }
   const fpts = ignore => pointRecs.filter(d => matchRow(d, ignore));
   const flns = ignore => lineRecs.filter(d => matchRow(d, ignore));
@@ -251,10 +289,14 @@
   function dataSpecies(){
     const tot = {};
     fpts().forEach(d => { const c = d.SpeciesName; if (!c) return; const v = Number(d.Size_of_in)||0; if (!v) return; tot[c] = (tot[c]||0) + v; });
-    const sorted = Object.keys(tot).sort((a,b)=>tot[b]-tot[a]);
-    const top = sorted.slice(0,15), rest = sorted.slice(15);
-    const labels = top.slice(), values = top.map(c=>Math.round(tot[c])), colors = top.map(()=> '#5E8FD0');
-    if (rest.length){ labels.push('Other ('+rest.length+' species)'); values.push(Math.round(rest.reduce((s,c)=>s+tot[c],0))); colors.push('#b9c2cc'); }
+    // RPMP focus species (Eradication + PC-Mapped) shown individually and coloured by programme;
+    // everything else (unmapped / not-focus) is summed into one grey "Other" bar.
+    const focus = [], other = [];
+    Object.keys(tot).forEach(name => (isFocus(name) ? focus : other).push(name));
+    focus.sort((a,b)=>tot[b]-tot[a]);
+    const labels = focus.slice(), values = focus.map(n=>Math.round(tot[n])), colors = focus.map(n=>SP_COLORS[spClass(n)]);
+    const otherSum = other.reduce((s,n)=>s+tot[n],0);
+    if (otherSum > 0){ labels.push('Other ('+other.length+' species)'); values.push(Math.round(otherSum)); colors.push(SP_COLORS.Other); }
     return { labels, values, colors };
   }
   function dataAge(){
@@ -274,10 +316,10 @@
   }
   function dataTrend(){
     const rows = fpts(IGNORE_FY);
-    const div = {}, size = {}, has = {};
-    YEARS.forEach(y => { div[y] = new Set(); size[y] = 0; has[y] = false; });
-    rows.forEach(d => { const y = d.FinYr; if (!(y in size)) return; has[y] = true; size[y] += (Number(d.Size_of_in)||0); const s = d.SpeciesID; if (s) div[y].add(s); });
-    return { diversity: YEARS.map(y => has[y] ? div[y].size : null), size: YEARS.map(y => has[y] ? Math.round(size[y]) : null) };
+    const sites = {}, size = {}, has = {};
+    YEARS.forEach(y => { sites[y] = new Set(); size[y] = 0; has[y] = false; });
+    rows.forEach(d => { const y = d.FinYr; if (!(y in size)) return; has[y] = true; size[y] += (Number(d.Size_of_in)||0); if (d.SiteID) sites[y].add(d.SiteID); });
+    return { sites: YEARS.map(y => has[y] ? sites[y].size : null), size: YEARS.map(y => has[y] ? Math.round(size[y]) : null) };
   }
   function dataEffort(){
     const rows = flns(IGNORE_FY);
@@ -300,6 +342,8 @@
     m.data.forEach((b,i)=>{ const v=c.data.datasets[0].data[i]; if(v==null||v===0)return; ctx.fillText(fmt(v), b.x+6, b.y); }); ctx.restore(); } };
   const totalLabels = { id:'totalLabels', afterDatasetsDraw(c){ const {ctx}=c; const last=c.getDatasetMeta(c.data.datasets.length-1); ctx.save(); ctx.font="600 11px 'DM Sans',sans-serif"; ctx.fillStyle='#41546D'; ctx.textBaseline='middle';
     last.data.forEach((b,i)=>{ let t=0; c.data.datasets.forEach(ds=>t+=(Number(ds.data[i])||0)); if(!t)return; ctx.fillText(fmt(t)+' km', b.x+6, b.y); }); ctx.restore(); } };
+  const totalLabelsPlain = { id:'totalLabelsPlain', afterDatasetsDraw(c){ const {ctx}=c; const last=c.getDatasetMeta(c.data.datasets.length-1); ctx.save(); ctx.font="600 11px 'DM Sans',sans-serif"; ctx.fillStyle='#41546D'; ctx.textBaseline='middle';
+    last.data.forEach((b,i)=>{ let t=0; c.data.datasets.forEach(ds=>t+=(Number(ds.data[i])||0)); if(!t)return; ctx.fillText(fmt(t), b.x+6, b.y); }); ctx.restore(); } };
 
   // ---------- render ----------
   const FONT = "'DM Sans', sans-serif";
@@ -347,8 +391,8 @@
 
     cEffort = lineChart('c_effort', dataEffort(), '#2d6a4f', 'Distance covered (Km)', false);
     const tr = dataTrend();
-    cTrendDiv  = lineChart('c_trend_div',  tr.diversity, '#5E8FD0', 'Distinct species', true);
-    cTrendSize = lineChart('c_trend_size', tr.size,      '#DF6B35', 'Plants controlled', false);
+    cTrendSites = lineChart('c_trend_div',  tr.sites, '#5E8FD0', 'Sites worked', true);
+    cTrendSize  = lineChart('c_trend_size', tr.size,  '#DF6B35', 'Plants controlled', false);
 
     const rg = dataRegion();
     cRegion = new Chart(el('c_region'), {
@@ -358,7 +402,7 @@
         plugins:{ legend:{position:'bottom',labels:{font:{family:FONT},padding:12,boxWidth:12}}, tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmt(c.parsed.x)+' plants'}} },
         scales:{ x:{stacked:true,beginAtZero:true,title:{display:true,text:'Number of plants controlled',font:{family:FONT,size:10}},grid:{color:'#e8e8e8'},ticks:{font:{family:FONT}}},
                  y:{stacked:true,grid:{display:false},ticks:{color:'#000',autoSkip:false,font:{family:FONT,size:11}}} } },
-      plugins:[totalLabels]
+      plugins:[totalLabelsPlain]
     });
   }
 
@@ -371,7 +415,7 @@
     cDistance.data.labels = dd.labels; cDistance.data.datasets = dd.datasets; cDistance.update();
     cEffort.data.datasets[0].data = dataEffort(); cEffort.update();
     const tr = dataTrend();
-    cTrendDiv.data.datasets[0].data = tr.diversity; cTrendDiv.update();
+    cTrendSites.data.datasets[0].data = tr.sites; cTrendSites.update();
     cTrendSize.data.datasets[0].data = tr.size; cTrendSize.update();
     const rg = dataRegion();
     cRegion.data.labels = rg.labels; cRegion.data.datasets = rg.datasets; cRegion.update();
@@ -402,7 +446,7 @@
   function scopeText(ignore){
     ignore = ignore || [];
     const parts = [];
-    ['f_FinYr','f_operatingArea','f_Programme','f_Species','f_Cont_name'].forEach(id => {
+    ['f_FinYr','f_operatingArea','f_Programme','f_Species','f_Cont_name','f_BaseSiteID'].forEach(id => {
       if (ignore.includes(id)) return;
       const s = el(id); if (s.value !== '__ALL__') parts.push(s.options[s.selectedIndex].textContent);
     });
@@ -410,7 +454,7 @@
   }
 
   function resetFilters(){
-    ['f_FinYr','f_operatingArea','f_Programme','f_Species','f_Cont_name'].forEach(id => el(id).value = '__ALL__');
+    ['f_FinYr','f_operatingArea','f_Programme','f_Species','f_Cont_name','f_BaseSiteID'].forEach(id => el(id).value = '__ALL__');
     applyFilters();
   }
 
@@ -440,7 +484,7 @@
     const ctx = out.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0,0,out.width,out.height);
     drawHeader(ctx, dpr, title, scope, padX);
     let y = hdrH; ctx.fillStyle = '#41546D'; ctx.font = `600 ${Math.round(11*dpr)}px Arial, sans-serif`;
-    ctx.fillText('Pest species diversity — distinct species recorded', padX, y + Math.round(14*dpr)); y += subH; ctx.drawImage(c1, 0, y); y += c1.height + gap;
+    ctx.fillText('Sites worked — distinct sites with control recorded', padX, y + Math.round(14*dpr)); y += subH; ctx.drawImage(c1, 0, y); y += c1.height + gap;
     ctx.fillStyle = '#41546D'; ctx.fillText('Total plants controlled — sum of recorded count', padX, y + Math.round(14*dpr)); y += subH; ctx.drawImage(c2, 0, y);
     openPng(out, title);
   }
