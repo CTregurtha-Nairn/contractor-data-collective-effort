@@ -65,6 +65,7 @@
       <div class="tile" style="border-left-color:#5E8FD0"><div class="tile-val" id="k_sites">&ndash;</div><div class="tile-lbl">Sites worked</div></div>
       <div class="tile" style="border-left-color:#2d6a4f"><div class="tile-val" id="k_dist">&ndash;</div><div class="tile-lbl">Distance covered</div></div>
       <div class="tile" style="border-left-color:#DF6B35"><div class="tile-val" id="k_size">&ndash;</div><div class="tile-lbl">Plants controlled</div></div>
+      <div class="tile" style="border-left-color:#a0703c"><div class="tile-val" id="k_animals">&ndash;</div><div class="tile-lbl">Animals controlled</div></div>
       <div class="tile" style="border-left-color:#77B484"><div class="tile-val" id="k_area">&ndash;</div><div class="tile-lbl">Area controlled</div></div>
       <div class="tile" style="border-left-color:#8257C2"><div class="tile-val" id="k_species">&ndash;</div><div class="tile-lbl">Pest plant species</div></div>
       <div class="tile" style="border-left-color:#41546D"><div class="tile-val" id="k_conts">&ndash;</div><div class="tile-lbl">Contractors</div></div>
@@ -93,7 +94,7 @@
         <div class="card-head"><div><div class="card-title">Effort Over Time</div><div class="card-sub">Distance covered per year</div></div>
           <button class="export-btn" onclick="exportSingle('c_effort','Effort Over Time',['f_FinYr'])">&#8681; PNG</button></div>
         <div class="card-body"><div class="canvas-box"><canvas id="c_effort"></canvas></div></div>
-        <p class="note">Length of pest-plant control tracks recorded each year &mdash; a proxy for on-ground effort.</p>
+        <p class="note">Length of control tracks recorded each year (plant + animal) &mdash; a proxy for on-ground effort.</p>
       </div>
 
       <div class="card wide">
@@ -109,8 +110,8 @@
       </div>
 
       <div class="card wide" style="height:300px">
-        <div class="card-head"><div><div class="card-title">Pest Animal Control</div><div class="card-sub">Animals controlled by species &mdash; ignores the Activity-type filter</div></div>
-          <button class="export-btn" onclick="exportSingle('c_animal','Pest Animal Control',['f_ActivityType'])">&#8681; PNG</button></div>
+        <div class="card-head"><div><div class="card-title">Pest Animal Control</div><div class="card-sub">Animals controlled by species (deer)</div></div>
+          <button class="export-btn" onclick="exportSingle('c_animal','Pest Animal Control',[])">&#8681; PNG</button></div>
         <div class="card-body"><div class="canvas-box"><canvas id="c_animal"></canvas></div>
           <p class="note" id="animal_note"></p></div>
       </div>
@@ -138,10 +139,10 @@
   const isAnimal = d => d.ActivityType === 'Pest Animal Control';
   fetch('./dashboard_data.json').then(r=>r.json()).then(data=>{
     const rawPoints = data.points || [], rawTracks = data.tracks || [];
-    points       = rawPoints.filter(d => !isAnimal(d));   // pest-plant points
-    animalPoints = rawPoints.filter(isAnimal);            // pest-animal points (deer)
-    tracks       = rawTracks.filter(d => !isAnimal(d));   // pest-plant tracks
-    animalTracks = rawTracks.filter(isAnimal);            // pest-animal tracks
+    points       = rawPoints.filter(d => !isAnimal(d));   // pest-plant points (species/age/trend need plant semantics)
+    animalPoints = rawPoints.filter(isAnimal);            // pest-animal points (deer) — for the animal card + KPI
+    tracks       = rawTracks;                              // ALL tracks — distance/effort span plant + animal effort
+    animalTracks = rawTracks.filter(isAnimal);            // pest-animal tracks — for the animal card's distance stat
     rawAll       = rawPoints.concat(rawTracks);
     buildContractorCanon();
     YEARS  = [...new Set(rawAll.map(d => d.FinYr).filter(v => v != null && v !== ''))].sort();
@@ -183,8 +184,8 @@
     const sites = Object.keys(nameById).sort((a,b)=>String(nameById[a]).localeCompare(String(nameById[b]))).map(id=>({value:id,text:nameById[id]+' ('+id+')'}));
     fillSelect('f_SiteID', sites, 'All sites');
     fillSelect('f_ProgrammeType', uniq('ProgrammeType', rawAll).map(v=>({value:v,text:v})), 'All programmes');
-    // Activity options are pest-plant only; pest-animal is shown in its own card and ignores this filter.
-    fillSelect('f_ActivityType', uniq('ActivityType', allRows()).map(v=>({value:v,text:v})), 'All activities');
+    // All activity types, including Pest Animal Control, so the filter drives every element uniformly.
+    fillSelect('f_ActivityType', uniq('ActivityType', rawAll).map(v=>({value:v,text:v})), 'All activities');
     const conts = [...new Set(rawAll.map(d=>canonCont(d.Cont_name)).filter(v=>v!=null&&v!==''))].sort((a,b)=>String(a).localeCompare(String(b)));
     fillSelect('f_Cont_name', conts.map(v=>({value:v,text:v})), 'All contractors');
   }
@@ -238,9 +239,8 @@
     rows.forEach(d => { const y = d.FinYr; if (!(y in size)) return; has[y] = true; size[y] += (Number(d.Distance_Km)||0); });
     return YEARS.map(y => has[y] ? Math.round(size[y]*100)/100 : null);
   }
-  // Pest-animal card ignores the Activity filter (it *is* the animal activity), respects the rest.
-  const fAnimalP = () => animalPoints.filter(d => matchRow(d, ['ActivityType']));
-  const fAnimalT = () => animalTracks.filter(d => matchRow(d, ['ActivityType']));
+  const fAnimalP = () => animalPoints.filter(d => matchRow(d));
+  const fAnimalT = () => animalTracks.filter(d => matchRow(d));
   function dataAnimal(){
     const tot = {};
     fAnimalP().forEach(d => { const c = d.SpeciesID; if (c == null || c === '' || c === 'Null') return; tot[c] = (tot[c]||0) + (Number(d.Size_of_in)||0); });
@@ -339,16 +339,19 @@
   }
 
   function computeKPI(){
-    const p = fpoints(), t = ftracks();
-    const sites   = new Set([...p, ...t].map(d => d.SiteID).filter(v => v != null && v !== ''));
+    const p = fpoints(), ap = fAnimalP(), t = ftracks();   // plant points, animal points, all tracks
+    const allP = p.concat(ap);
+    const sites   = new Set([...allP, ...t].map(d => d.SiteID).filter(v => v != null && v !== ''));
     const dist    = t.reduce((s,d)=>s+(Number(d.Distance_Km)||0),0);
-    const size    = p.reduce((s,d)=>s+(Number(d.Size_of_in)||0),0);
+    const plants  = p.reduce((s,d)=>s+(Number(d.Size_of_in)||0),0);
+    const animals = ap.reduce((s,d)=>s+(Number(d.Size_of_in)||0),0);
     const species = new Set(p.map(d=>d.SpeciesID).filter(v=>v!=null&&v!==''&&v!=='Null'));
-    const conts   = new Set([...p, ...t].map(d=>canonCont(d.Cont_name)).filter(v=>v!=null&&v!==''));
+    const conts   = new Set([...allP, ...t].map(d=>canonCont(d.Cont_name)).filter(v=>v!=null&&v!==''));
     const area    = p.reduce((s,d)=>s+(Number(d.Size_sqm)||0),0);   // mostly Kaitiaki records this
     el('k_sites').textContent = fmt(sites.size);
     el('k_dist').innerHTML = fmt(dist) + ' <span class="tile-unit">km</span>';
-    el('k_size').textContent = fmt(size);
+    el('k_size').textContent = fmt(plants);
+    el('k_animals').textContent = fmt(animals);
     el('k_area').innerHTML = area > 0 ? fmt(area) + ' <span class="tile-unit">m²</span>' : '&ndash;';
     el('k_species').textContent = fmt(species.size);
     el('k_conts').textContent = fmt(conts.size);
