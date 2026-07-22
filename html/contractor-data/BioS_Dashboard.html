@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Contractor Data — Biosecurity Pest Plants</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%}
+    body{font-family:'DM Sans',sans-serif;background:#eef1f4;color:#1a1a2e;overflow-y:auto}
+    /* ---- Top filter bar (always visible → never clipped by the embed frame) ---- */
+    .topbar{position:sticky;top:0;z-index:50;background:#273747;color:#fff;padding:12px 18px;box-shadow:0 2px 10px rgba(0,0,0,.15)}
+    .topbar-row{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+    .brand{font-size:0.98rem;font-weight:600;margin-right:auto;display:flex;flex-direction:column;justify-content:center;min-height:44px}
+    .brand small{display:block;font-weight:400;font-size:0.7rem;color:#aebccb;margin-top:2px}
+    .fg{display:flex;flex-direction:column;gap:3px}
+    .fg label{font-size:0.64rem;text-transform:uppercase;letter-spacing:.04em;color:#aebccb;font-weight:500}
+    .topbar select{min-width:120px;max-width:230px;border:1px solid #46586c;border-radius:6px;padding:7px 26px 7px 9px;font-size:0.8rem;color:#1a1a2e;font-family:inherit;appearance:none;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 8px center;cursor:pointer}
+    .topbar select:focus{outline:none;border-color:#8fb4e0}
+    .reset-btn{background:#3a4f63;color:#fff;border:1px solid #46586c;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:0.78rem;font-family:inherit;height:34px}
+    .reset-btn:hover{background:#46596e}
+    .scope-line{font-size:0.72rem;color:#aebccb;margin-top:8px}
+    .scope-line b{color:#fff;font-weight:500}
+    /* ---- KPI tiles ---- */
+    .board{padding:16px 18px 22px}
+    .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+    .tile{background:#fff;border-radius:10px;padding:14px 16px;border-left:4px solid #5E8FD0;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+    .tile-val{font-size:1.7rem;font-weight:700;line-height:1.1;white-space:nowrap}
+    .tile-unit{font-size:0.85rem;font-weight:500;color:#5a6b7b}
+    .tile-lbl{font-size:0.74rem;color:#5a6b7b;margin-top:3px;font-weight:500}
+    /* ---- Chart grid ---- */
+    .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+    .card{background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);display:flex;flex-direction:column;height:380px;padding:14px 16px 10px;position:relative}
+    .card.wide{grid-column:1 / -1;height:430px}
+    .card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
+    .card-title{font-size:0.92rem;font-weight:600;line-height:1.3}
+    .card-sub{font-size:0.7rem;color:#8a94a0;margin-top:2px}
+    .export-btn{background:none;border:1px solid #ccc;border-radius:6px;padding:5px 9px;cursor:pointer;display:flex;align-items:center;gap:5px;font-size:0.72rem;font-family:inherit;color:#555;white-space:nowrap;flex-shrink:0}
+    .export-btn:hover{background:#f5f5f5;border-color:#aaa}
+    .card-body{flex:1;min-height:0;position:relative;display:flex;flex-direction:column;gap:4px}
+    .canvas-box{flex:1;min-height:0;position:relative}
+    .mini-sub{font-size:0.7rem;font-weight:600;color:#41546D;margin:0 0 1px 2px}
+    .note{color:#8a94a0;font-size:0.64rem;line-height:1.3;margin:4px 2px 0}
+    .gen{text-align:right;color:#aaa;font-size:0.66rem;padding:6px 20px 4px}
+    @media(max-width:760px){.grid{grid-template-columns:1fr}.card.wide{grid-column:auto}}
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-row">
+      <div class="brand">Contractor Data &mdash; Biosecurity Pest Plants<small>Horizons Regional Council</small></div>
+      <div class="fg"><label>Financial Year</label><select id="f_FinYr" onchange="applyFilters()"></select></div>
+      <div class="fg"><label>Operating Area</label><select id="f_operatingArea" onchange="applyFilters()"></select></div>
+      <div class="fg"><label>Programme</label><select id="f_Programme" onchange="applyFilters()"></select></div>
+      <div class="fg"><label>Species</label><select id="f_Species" onchange="applyFilters()"></select></div>
+      <div class="fg"><label>Contractor</label><select id="f_Cont_name" onchange="applyFilters()"></select></div>
+      <button class="reset-btn" onclick="resetFilters()">Reset</button>
+    </div>
+    <div class="scope-line">Showing: <b id="scope">all records</b> &nbsp;·&nbsp; <span style="color:#8fa3b8">Eradication &amp; Progressive Containment programmes. Financial-year filter applies to bar charts; trend/effort always span all years.</span></div>
+  </div>
+
+  <div class="board">
+    <div class="kpis">
+      <div class="tile" style="border-left-color:#5E8FD0"><div class="tile-val" id="k_sites">&ndash;</div><div class="tile-lbl">Sites worked</div></div>
+      <div class="tile" style="border-left-color:#2d6a4f"><div class="tile-val" id="k_dist">&ndash;</div><div class="tile-lbl">Distance covered</div></div>
+      <div class="tile" style="border-left-color:#DF6B35"><div class="tile-val" id="k_plants">&ndash;</div><div class="tile-lbl">Plants controlled</div></div>
+      <div class="tile" style="border-left-color:#77B484"><div class="tile-val" id="k_area">&ndash;</div><div class="tile-lbl">Area controlled</div></div>
+      <div class="tile" style="border-left-color:#8257C2"><div class="tile-val" id="k_species">&ndash;</div><div class="tile-lbl">Pest plant species</div></div>
+      <div class="tile" style="border-left-color:#41546D"><div class="tile-val" id="k_conts">&ndash;</div><div class="tile-lbl">Contractors</div></div>
+      <div class="tile" style="border-left-color:#a0703c"><div class="tile-val" id="k_opareas">&ndash;</div><div class="tile-lbl">Operating areas</div></div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">Plants Controlled by Species</div><div class="card-sub">Top 15 by count · rest grouped</div></div>
+          <button class="export-btn" onclick="exportSingle('c_species','Plants Controlled by Species',[])">&#8681; PNG</button></div>
+        <div class="card-body"><div class="canvas-box"><canvas id="c_species"></canvas></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">Plants Controlled by Age Class</div><div class="card-sub">Adult / Juvenile / Seedling</div></div>
+          <button class="export-btn" onclick="exportSingle('c_age','Plants Controlled by Age Class',[])">&#8681; PNG</button></div>
+        <div class="card-body"><div class="canvas-box"><canvas id="c_age"></canvas></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">Distance Covered by Contractor</div><div class="card-sub">Ground + aerial tracks · stacked by financial year</div></div>
+          <button class="export-btn" onclick="exportSingle('c_distance','Distance Covered by Contractor',['f_FinYr'])">&#8681; PNG</button></div>
+        <div class="card-body"><div class="canvas-box"><canvas id="c_distance"></canvas></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">Effort Over Time</div><div class="card-sub">Distance covered per year</div></div>
+          <button class="export-btn" onclick="exportSingle('c_effort','Effort Over Time',['f_FinYr'])">&#8681; PNG</button></div>
+        <div class="card-body"><div class="canvas-box"><canvas id="c_effort"></canvas></div></div>
+        <p class="note">Length of ground and aerial control tracks recorded each year &mdash; a proxy for on-ground and aerial control effort.</p>
+      </div>
+
+      <div class="card wide">
+        <div class="card-head"><div><div class="card-title">Pest-Plant Trend Over Time</div><div class="card-sub">Diversity &amp; plants controlled across the years</div></div>
+          <button class="export-btn" onclick="exportTrend()">&#8681; PNG</button></div>
+        <div class="card-body">
+          <div class="mini-sub">Pest species diversity &mdash; distinct species recorded</div>
+          <div class="canvas-box"><canvas id="c_trend_div"></canvas></div>
+          <div class="mini-sub">Total plants controlled &mdash; sum of recorded count</div>
+          <div class="canvas-box"><canvas id="c_trend_size"></canvas></div>
+        </div>
+        <p class="note">Based on recorded pest-plant control work. A fall in plants controlled can reflect successful containment, but also less control recorded that year &mdash; read alongside effort, and per operating area / programme for the clearest signal.</p>
+      </div>
+
+      <div class="card wide">
+        <div class="card-head"><div><div class="card-title">Plants Controlled by Operating Area</div><div class="card-sub">Split by programme (Eradication / Progressive Containment)</div></div>
+          <button class="export-btn" onclick="exportSingle('c_region','Plants Controlled by Operating Area',[])">&#8681; PNG</button></div>
+        <div class="card-body"><div class="canvas-box"><canvas id="c_region"></canvas></div></div>
+      </div>
+    </div>
+  </div>
+  <p class="gen" id="gen"></p>
+
+<script>
+  const FY_COLORS = { '20-21':'#5E8FD0','21-22':'#77B484','22-23':'#DF6B35','23-24':'#DBCF4E','24-25':'#41546D','25-26':'#8257C2' };
+  const PROG_COLORS = { 'Eradication':'#DF6B35', 'Progressive Containment':'#5E8FD0' };
+  const PROGRAMMES = ['Eradication', 'Progressive Containment'];
+  // Operating-area codes = middle segment of BaseSiteID (e.g. "OMB-2-256" -> area 2).
+  // The operatingArea field is null in the service, so region is derived from this code.
+  // Feilding (code 1) is deliberately omitted — it isn't a used operating area, so its
+  // few records fall through to the "(unspecified)" bucket rather than showing a bar.
+  const REGION_BY_CODE = { '2':'Horowhenua','3':'Ohura','4':'PalmNth','5':'Taihape','6':'Tararua','7':'Tongariro','8':'Whanganui' };
+  // Contractor spelling variants that should count as one (source data typos).
+  const CONT_ALIAS = { 'rangitikei helicoptors':'Rangitikei Helicopters' };
+  const aliasCont = n => CONT_ALIAS[String(n||'').trim().toLowerCase().replace(/\s+/g,' ')] || n;
+  const FALLBACK = '#9aa5b1';
+  const fmt = n => Math.round(n).toLocaleString('en-NZ');
+  const el = id => document.getElementById(id);
+
+  let recs = [], pointRecs = [], lineRecs = [], polyRecs = [], YEARS = [];
+  let contCanon = {};                       // raw contractor name -> canonical spelling
+  const canonCont = n => contCanon[n] || n; // collapses case-only variants
+  let cSpecies, cAge, cDistance, cEffort, cTrendDiv, cTrendSize, cRegion;
+
+  // ---- defensive field accessors (survive minor naming differences in the export) ----
+  const num = (d, keys) => { for (const k of keys){ if (k in d && d[k] != null && d[k] !== ''){ const n = Number(d[k]); if (isFinite(n)) return n; } } return 0; };
+  const str = (d, keys) => { for (const k of keys){ if (k in d && d[k] != null && d[k] !== ''){ return String(d[k]); } } return ''; };
+  const sizeOf   = d => num(d, ['Size_of_in','Size_of_In','size_of_in','PlantsControlled','plantsControlled','Count']);
+  const sqmOf    = d => num(d, ['Size_sqm','Size_Sqm','size_sqm','SizeSqm']);
+  const ageOf    = d => str(d, ['Age_class','AgeClass','age_class']);
+  const projOf   = d => str(d, ['projectType','ProjectType','projecttype','Project_Type']);
+  const contOf   = d => str(d, ['Cont_name','ContractorName','Contractor_Name','cont_name','operatorName']);
+  const shpArea  = d => num(d, ['Shape__Area','Shape_Area','SHAPE_Area','Shape__area']);
+  const baseSiteOf = d => str(d, ['BaseSiteID','baseSiteID','SiteID','siteID','Site_ID']);
+  // Physical site id = area-number, stripping the species prefix off BaseSiteID ("OMB-2-256" -> "2-256").
+  function siteOf(d){ const b = baseSiteOf(d); if (!b) return ''; const p = b.split('-'); return (p.length>=3 && /^\d+$/.test(p[1])) ? p[1]+'-'+p[2] : b; }
+  // Operating area: derived from the BaseSiteID area code (the service's operatingArea field is null).
+  function regionOf(d){ const raw = str(d, ['operatingArea','OperatingArea','operatingarea','Operating_Area']); if (raw) return raw; const p = baseSiteOf(d).split('-'); return (p.length>=3 && (p[1] in REGION_BY_CODE)) ? REGION_BY_CODE[p[1]] : ''; }
+  // Financial year: most records use "23-24"; a few use "2023/2024" — normalise to the short form.
+  function normFinYr(s){ s = String(s||'').trim(); const m = s.match(/^(\d{4})\/(\d{4})$/); return m ? m[1].slice(2)+'-'+m[2].slice(2) : s; }
+  function distKm(d){
+    const lk = num(d, ['Length_Km','Length_km','LengthKm','Distance_Km','Length__Km']);
+    if (lk > 0) return lk;
+    const sl = num(d, ['Shape__Length','Shape_Length','SHAPE_Length','Shape__length']);
+    return sl > 0 ? sl / 1000 : 0;   // service is NZTM (metres) → km
+  }
+  // Only Eradication and Progressive Containment are in scope; the two Progressive
+  // Containment variants (Mapped / Unmapped) collapse to one programme.
+  function normProg(pt){
+    const s = String(pt || '').trim();
+    if (/^Eradication/i.test(s)) return 'Eradication';
+    if (/^Progressive Containment/i.test(s)) return 'Progressive Containment';
+    return null;
+  }
+  function norm(r, bucket, geom){
+    r._bucket = bucket; r._geom = geom;
+    r.Programme = normProg(projOf(r));
+    r.FinYr = normFinYr(r.FinYr);
+    r.operatingArea = regionOf(r);
+    r.Cont_name = aliasCont(contOf(r));
+    r.SiteID = siteOf(r);
+    r.Age_class = ageOf(r);
+    r.Size_of_in = sizeOf(r);
+    r.Size_sqm = sqmOf(r);
+    r._km = geom === 'line' ? distKm(r) : 0;
+    r._area = geom === 'polygon' ? shpArea(r) : 0;
+    if (!r.SpeciesName) r.SpeciesName = r.SpeciesID || '';   // export usually sets both
+    return r;
+  }
+
+  fetch('./bios_dashboard_data.json').then(r=>r.json()).then(data=>{
+    const gp  = (data.ground_points   || []).map(r => norm(r, 'ground_points',   'point'));
+    const gl  = (data.ground_lines    || []).map(r => norm(r, 'ground_lines',    'line'));
+    const ap  = (data.aerial_points   || []).map(r => norm(r, 'aerial_points',   'point'));
+    const al  = (data.aerial_lines    || []).map(r => norm(r, 'aerial_lines',    'line'));
+    const apg = (data.aerial_polygons || []).map(r => norm(r, 'aerial_polygons', 'polygon'));
+    // Global scope: only the two target programmes.
+    recs = [...gp, ...gl, ...ap, ...al, ...apg].filter(r => r.Programme != null);
+    pointRecs = recs.filter(r => r._geom === 'point');
+    lineRecs  = recs.filter(r => r._geom === 'line');
+    polyRecs  = recs.filter(r => r._geom === 'polygon');
+    buildContractorCanon();
+    YEARS = [...new Set(recs.map(d => d.FinYr).filter(v => v != null && v !== ''))].sort();
+    el('gen').textContent = 'Generated: ' + (data.generated_at || '—');
+    buildFilters();
+    renderAll();
+    applyFilters();
+  }).catch(() => { el('gen').textContent = 'Failed to load dashboard data (run BioSecurity_Dashboard_Export.py to create bios_dashboard_data.json).'; });
+
+  // ---------- filters ----------
+  function fillSelect(id, values, allLabel){
+    const sel = el(id);
+    sel.innerHTML = '<option value="__ALL__">' + allLabel + '</option>';
+    values.forEach(v => { const o = document.createElement('option'); o.value = v.value; o.textContent = v.text; sel.appendChild(o); });
+  }
+  function uniq(getter){ return [...new Set(recs.map(getter).filter(v => v != null && v !== ''))].sort((a,b)=>String(a).localeCompare(String(b))); }
+
+  // Merge case-only contractor-name variants: each lowercased key maps to its most common spelling.
+  function buildContractorCanon(){
+    const counts = {};
+    recs.forEach(d => {
+      const n = d.Cont_name; if (n == null || n === '') return;
+      const k = String(n).trim().toLowerCase().replace(/\s+/g, ' ');
+      (counts[k] = counts[k] || {})[n] = (counts[k][n] || 0) + 1;
+    });
+    contCanon = {};
+    Object.values(counts).forEach(variants => {
+      const best = Object.keys(variants).sort((a,b)=>variants[b]-variants[a])[0];
+      Object.keys(variants).forEach(orig => { contCanon[orig] = best; });
+    });
+  }
+
+  function buildFilters(){
+    fillSelect('f_FinYr', YEARS.map(y=>({value:y,text:y})), 'All years');
+    fillSelect('f_operatingArea', uniq(d=>d.operatingArea).map(v=>({value:v,text:v})), 'All areas');
+    fillSelect('f_Programme', PROGRAMMES.filter(p=>recs.some(d=>d.Programme===p)).map(v=>({value:v,text:v})), 'All programmes');
+    fillSelect('f_Species', uniq(d=>d.SpeciesName).map(v=>({value:v,text:v})), 'All species');
+    const conts = [...new Set(recs.map(d=>canonCont(d.Cont_name)).filter(v=>v!=null&&v!==''))].sort((a,b)=>String(a).localeCompare(String(b)));
+    fillSelect('f_Cont_name', conts.map(v=>({value:v,text:v})), 'All contractors');
+  }
+
+  const FV = id => el(id).value;
+  function matchRow(d, ignore){
+    ignore = ignore || [];
+    const chk = (id, dv) => { if (ignore.includes(id)) return true; const v = FV(id); return v === '__ALL__' || String(dv) === v; };
+    return chk('f_FinYr', d.FinYr) && chk('f_operatingArea', d.operatingArea) && chk('f_Programme', d.Programme)
+        && chk('f_Species', d.SpeciesName) && chk('f_Cont_name', canonCont(d.Cont_name));
+  }
+  const fpts = ignore => pointRecs.filter(d => matchRow(d, ignore));
+  const flns = ignore => lineRecs.filter(d => matchRow(d, ignore));
+  const IGNORE_FY = ['f_FinYr'];   // trend/effort/distance use the year as an axis
+
+  // ---------- data builders ----------
+  function dataSpecies(){
+    const tot = {};
+    fpts().forEach(d => { const c = d.SpeciesName; if (!c) return; const v = Number(d.Size_of_in)||0; if (!v) return; tot[c] = (tot[c]||0) + v; });
+    const sorted = Object.keys(tot).sort((a,b)=>tot[b]-tot[a]);
+    const top = sorted.slice(0,15), rest = sorted.slice(15);
+    const labels = top.slice(), values = top.map(c=>Math.round(tot[c])), colors = top.map(()=> '#5E8FD0');
+    if (rest.length){ labels.push('Other ('+rest.length+' species)'); values.push(Math.round(rest.reduce((s,c)=>s+tot[c],0))); colors.push('#b9c2cc'); }
+    return { labels, values, colors };
+  }
+  function dataAge(){
+    const t = { A:0, J:0, S:0 };
+    fpts().forEach(d => { const a = String(d.Age_class||'').trim().toUpperCase(); if (a in t) t[a] += (Number(d.Size_of_in)||0); });
+    return [Math.round(t.A), Math.round(t.J), Math.round(t.S)];
+  }
+  function dataDistance(){
+    const rows = flns(IGNORE_FY);
+    const tot = {};
+    rows.forEach(d => { const c = canonCont(d.Cont_name); if (!c) return; tot[c] = (tot[c]||0) + d._km; });
+    const cats = Object.keys(tot).sort((a,b)=>tot[a]-tot[b]);
+    const pivot = {}; cats.forEach(c => { pivot[c] = {}; YEARS.forEach(y => pivot[c][y] = 0); });
+    rows.forEach(d => { const c = canonCont(d.Cont_name), y = d.FinYr; if (c in pivot && y in pivot[c]) pivot[c][y] += d._km; });
+    const datasets = YEARS.map(y => ({ label:y, data: cats.map(c=>Math.round(pivot[c][y]*100)/100), backgroundColor: FY_COLORS[y]||FALLBACK, borderWidth:0 }));
+    return { labels: cats, datasets };
+  }
+  function dataTrend(){
+    const rows = fpts(IGNORE_FY);
+    const div = {}, size = {}, has = {};
+    YEARS.forEach(y => { div[y] = new Set(); size[y] = 0; has[y] = false; });
+    rows.forEach(d => { const y = d.FinYr; if (!(y in size)) return; has[y] = true; size[y] += (Number(d.Size_of_in)||0); const s = d.SpeciesID; if (s) div[y].add(s); });
+    return { diversity: YEARS.map(y => has[y] ? div[y].size : null), size: YEARS.map(y => has[y] ? Math.round(size[y]) : null) };
+  }
+  function dataEffort(){
+    const rows = flns(IGNORE_FY);
+    const size = {}, has = {};
+    YEARS.forEach(y => { size[y] = 0; has[y] = false; });
+    rows.forEach(d => { const y = d.FinYr; if (!(y in size)) return; has[y] = true; size[y] += d._km; });
+    return YEARS.map(y => has[y] ? Math.round(size[y]*100)/100 : null);
+  }
+  function dataRegion(){
+    const rows = fpts();
+    const tot = {};   // operatingArea -> { programme: sum }
+    rows.forEach(d => { const a = d.operatingArea || '(unspecified)'; const p = d.Programme; if (!PROGRAMMES.includes(p)) return; (tot[a] = tot[a] || {})[p] = (tot[a][p]||0) + (Number(d.Size_of_in)||0); });
+    const areas = Object.keys(tot).sort((a,b)=>{ const s=k=>(tot[k].Eradication||0)+(tot[k]['Progressive Containment']||0); return s(a)-s(b); });
+    const datasets = PROGRAMMES.map(p => ({ label:p, data: areas.map(a=>Math.round(tot[a][p]||0)), backgroundColor: PROG_COLORS[p], borderWidth:0 }));
+    return { labels: areas, datasets };
+  }
+
+  // ---------- value/total label plugins ----------
+  const valueLabels = { id:'valueLabels', afterDatasetsDraw(c){ const {ctx}=c; const m=c.getDatasetMeta(0); ctx.save(); ctx.font="600 11px 'DM Sans',sans-serif"; ctx.fillStyle='#41546D'; ctx.textBaseline='middle';
+    m.data.forEach((b,i)=>{ const v=c.data.datasets[0].data[i]; if(v==null||v===0)return; ctx.fillText(fmt(v), b.x+6, b.y); }); ctx.restore(); } };
+  const totalLabels = { id:'totalLabels', afterDatasetsDraw(c){ const {ctx}=c; const last=c.getDatasetMeta(c.data.datasets.length-1); ctx.save(); ctx.font="600 11px 'DM Sans',sans-serif"; ctx.fillStyle='#41546D'; ctx.textBaseline='middle';
+    last.data.forEach((b,i)=>{ let t=0; c.data.datasets.forEach(ds=>t+=(Number(ds.data[i])||0)); if(!t)return; ctx.fillText(fmt(t)+' km', b.x+6, b.y); }); ctx.restore(); } };
+
+  // ---------- render ----------
+  const FONT = "'DM Sans', sans-serif";
+  function lineChart(id, values, color, yTitle, integerY){
+    return new Chart(el(id), {
+      type:'line',
+      data:{ labels:YEARS, datasets:[{ data:values, borderColor:color, backgroundColor:color+'22', borderWidth:2, tension:.25, fill:true, spanGaps:false, pointRadius:4, pointHoverRadius:6, pointBackgroundColor:color }] },
+      options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+        plugins:{ legend:{display:false}, tooltip:{ callbacks:{ title:i=>i[0].label, label:c=>fmt(c.parsed.y)+(integerY?'':' km') } } },
+        scales:{ x:{grid:{display:false},ticks:{color:'#000',font:{family:FONT,size:11,weight:'600'}}},
+                 y:{beginAtZero:true,title:{display:true,text:yTitle,font:{family:FONT,size:10}},grid:{color:'#e8e8e8'},ticks:{precision:integerY?0:undefined,font:{family:FONT}}} } }
+    });
+  }
+
+  function renderAll(){
+    const sp = dataSpecies();
+    cSpecies = new Chart(el('c_species'), {
+      type:'bar',
+      data:{ labels:sp.labels, datasets:[{ data:sp.values, backgroundColor:sp.colors, borderWidth:0, borderRadius:3, barPercentage:0.86, categoryPercentage:0.92 }] },
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{padding:{right:64}},
+        plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>'Plants controlled: '+fmt(c.parsed.x) } } },
+        scales:{ x:{beginAtZero:true,title:{display:true,text:'Number of plants controlled',font:{family:FONT,size:10}},grid:{color:'#e8e8e8'},ticks:{font:{family:FONT}}},
+                 y:{grid:{display:false},ticks:{color:'#000',autoSkip:false,font:{family:FONT,size:10}}} } },
+      plugins:[valueLabels]
+    });
+
+    cAge = new Chart(el('c_age'), {
+      type:'bar',
+      data:{ labels:['Adult (A)','Juvenile (J)','Seedling (S)'], datasets:[{ data:dataAge(), backgroundColor:'#5E8FD0', borderWidth:0, borderRadius:3, barPercentage:0.7, categoryPercentage:0.8 }] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+        scales:{ x:{grid:{display:false},ticks:{color:'#000',font:{family:FONT,size:12,weight:'600'}}},
+                 y:{beginAtZero:true,title:{display:true,text:'Number of plants controlled',font:{family:FONT,size:10}},grid:{color:'#e8e8e8'},ticks:{font:{family:FONT}}} } }
+    });
+
+    const dd = dataDistance();
+    cDistance = new Chart(el('c_distance'), {
+      type:'bar',
+      data:{ labels:dd.labels, datasets:dd.datasets },
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{padding:{right:72}},
+        plugins:{ legend:{position:'bottom',labels:{font:{family:FONT},padding:12,boxWidth:12}}, tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmt(c.parsed.x)+' km'}} },
+        scales:{ x:{stacked:true,beginAtZero:true,title:{display:true,text:'Distance (Km)',font:{family:FONT,size:10}},grid:{color:'#e8e8e8'},ticks:{font:{family:FONT}}},
+                 y:{stacked:true,grid:{display:false},ticks:{color:'#000',autoSkip:false,font:{family:FONT,size:10}}} } },
+      plugins:[totalLabels]
+    });
+
+    cEffort = lineChart('c_effort', dataEffort(), '#2d6a4f', 'Distance covered (Km)', false);
+    const tr = dataTrend();
+    cTrendDiv  = lineChart('c_trend_div',  tr.diversity, '#5E8FD0', 'Distinct species', true);
+    cTrendSize = lineChart('c_trend_size', tr.size,      '#DF6B35', 'Plants controlled', false);
+
+    const rg = dataRegion();
+    cRegion = new Chart(el('c_region'), {
+      type:'bar',
+      data:{ labels:rg.labels, datasets:rg.datasets },
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{padding:{right:72}},
+        plugins:{ legend:{position:'bottom',labels:{font:{family:FONT},padding:12,boxWidth:12}}, tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmt(c.parsed.x)+' plants'}} },
+        scales:{ x:{stacked:true,beginAtZero:true,title:{display:true,text:'Number of plants controlled',font:{family:FONT,size:10}},grid:{color:'#e8e8e8'},ticks:{font:{family:FONT}}},
+                 y:{stacked:true,grid:{display:false},ticks:{color:'#000',autoSkip:false,font:{family:FONT,size:11}}} } },
+      plugins:[totalLabels]
+    });
+  }
+
+  // ---------- update on filter change ----------
+  function applyFilters(){
+    const sp = dataSpecies();
+    cSpecies.data.labels = sp.labels; cSpecies.data.datasets[0].data = sp.values; cSpecies.data.datasets[0].backgroundColor = sp.colors; cSpecies.update();
+    cAge.data.datasets[0].data = dataAge(); cAge.update();
+    const dd = dataDistance();
+    cDistance.data.labels = dd.labels; cDistance.data.datasets = dd.datasets; cDistance.update();
+    cEffort.data.datasets[0].data = dataEffort(); cEffort.update();
+    const tr = dataTrend();
+    cTrendDiv.data.datasets[0].data = tr.diversity; cTrendDiv.update();
+    cTrendSize.data.datasets[0].data = tr.size; cTrendSize.update();
+    const rg = dataRegion();
+    cRegion.data.labels = rg.labels; cRegion.data.datasets = rg.datasets; cRegion.update();
+    computeKPI();
+    const scope = scopeText([]);
+    el('scope').textContent = scope === 'All records' ? 'all records' : scope;
+  }
+
+  function computeKPI(){
+    const fp = fpts(), fl = flns(), fg = polyRecs.filter(d=>matchRow(d)), fa = recs.filter(d=>matchRow(d));
+    const sites   = new Set(fa.map(d => d.SiteID).filter(v => v != null && v !== ''));
+    const dist    = fl.reduce((s,d)=>s+d._km,0);
+    const plants  = fp.reduce((s,d)=>s+(Number(d.Size_of_in)||0),0);
+    const area    = fp.reduce((s,d)=>s+(Number(d.Size_sqm)||0),0) + fg.reduce((s,d)=>s+d._area,0);
+    const species = new Set(fa.map(d=>d.SpeciesID).filter(v=>v!=null&&v!==''));
+    const conts   = new Set(fa.map(d=>canonCont(d.Cont_name)).filter(v=>v!=null&&v!==''));
+    const opAreas = new Set(fa.map(d=>d.operatingArea).filter(v=>v!=null&&v!==''));
+    el('k_sites').textContent = fmt(sites.size);
+    el('k_dist').innerHTML = fmt(dist) + ' <span class="tile-unit">km</span>';
+    el('k_plants').textContent = fmt(plants);
+    el('k_area').innerHTML = area > 0 ? fmt(area) + ' <span class="tile-unit">m²</span>' : '&ndash;';
+    el('k_species').textContent = fmt(species.size);
+    el('k_conts').textContent = fmt(conts.size);
+    el('k_opareas').textContent = fmt(opAreas.size);
+  }
+
+  // ignore: array of select ids to leave out of the label (e.g. ['f_FinYr'] for year-axis charts).
+  function scopeText(ignore){
+    ignore = ignore || [];
+    const parts = [];
+    ['f_FinYr','f_operatingArea','f_Programme','f_Species','f_Cont_name'].forEach(id => {
+      if (ignore.includes(id)) return;
+      const s = el(id); if (s.value !== '__ALL__') parts.push(s.options[s.selectedIndex].textContent);
+    });
+    return parts.length ? parts.join(' · ') : 'All records';
+  }
+
+  function resetFilters(){
+    ['f_FinYr','f_operatingArea','f_Programme','f_Species','f_Cont_name'].forEach(id => el(id).value = '__ALL__');
+    applyFilters();
+  }
+
+  // ---------- per-chart PNG export ----------
+  function drawHeader(ctx, dpr, title, scope, padX){
+    const hasScope = scope && scope !== 'All records';
+    ctx.fillStyle = '#1a1a2e'; ctx.font = `600 ${Math.round(14*dpr)}px Arial, sans-serif`;
+    ctx.fillText(title, padX, Math.round(22*dpr));
+    if (hasScope){ ctx.fillStyle = '#5a6b7b'; ctx.font = `500 ${Math.round(11*dpr)}px Arial, sans-serif`; ctx.fillText(scope, padX, Math.round(40*dpr)); }
+    return hasScope;
+  }
+  function exportSingle(canvasId, title, ignore){
+    const src = el(canvasId); const scope = scopeText(ignore); const hasScope = scope && scope !== 'All records';
+    const dpr = window.devicePixelRatio || 1; const hdrH = Math.round((hasScope?66:54)*dpr), padX = Math.round(18*dpr);
+    const out = document.createElement('canvas'); out.width = src.width; out.height = src.height + hdrH;
+    const ctx = out.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0,0,out.width,out.height);
+    drawHeader(ctx, dpr, title, scope, padX);
+    ctx.drawImage(src, 0, hdrH);
+    openPng(out, title);
+  }
+  function exportTrend(){
+    const c1 = el('c_trend_div'), c2 = el('c_trend_size'); const title = 'Pest-Plant Trend Over Time';
+    const scope = scopeText(['f_FinYr']); const hasScope = scope && scope !== 'All records';
+    const dpr = window.devicePixelRatio || 1;
+    const hdrH = Math.round((hasScope?54:40)*dpr), subH = Math.round(20*dpr), padX = Math.round(18*dpr), gap = Math.round(10*dpr);
+    const out = document.createElement('canvas'); out.width = Math.max(c1.width, c2.width); out.height = hdrH + subH + c1.height + gap + subH + c2.height;
+    const ctx = out.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0,0,out.width,out.height);
+    drawHeader(ctx, dpr, title, scope, padX);
+    let y = hdrH; ctx.fillStyle = '#41546D'; ctx.font = `600 ${Math.round(11*dpr)}px Arial, sans-serif`;
+    ctx.fillText('Pest species diversity — distinct species recorded', padX, y + Math.round(14*dpr)); y += subH; ctx.drawImage(c1, 0, y); y += c1.height + gap;
+    ctx.fillStyle = '#41546D'; ctx.fillText('Total plants controlled — sum of recorded count', padX, y + Math.round(14*dpr)); y += subH; ctx.drawImage(c2, 0, y);
+    openPng(out, title);
+  }
+  function openPng(out, title){
+    const safe = title.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-zA-Z0-9\s-]/g,'').trim().replace(/\s+/g,'_');
+    const dataUrl = out.toDataURL('image/png');
+    const w = window.open('', '_blank');
+    if (!w){ alert('Allow pop-ups for this site to export the chart.'); return; }
+    w.document.write(`<!DOCTYPE html><html><head><title>${safe}</title></head><body style="margin:0;background:#1a1a2e;display:flex;flex-direction:column;align-items:center;padding:24px;font-family:sans-serif;gap:16px;"><a href="${dataUrl}" download="${safe}.png" style="background:#2d6a4f;color:#fff;padding:10px 22px;border-radius:6px;text-decoration:none;font-size:15px;font-weight:600;">&#8681; Download ${safe}.png</a><img src="${dataUrl}" style="max-width:100%;border:1px solid #333;border-radius:4px;"></body></html>`);
+    w.document.close();
+  }
+</script>
+</body>
+</html>
