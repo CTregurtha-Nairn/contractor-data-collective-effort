@@ -131,11 +131,9 @@
   const PC_MAPPED   = new Set(['BAP','BSD','CON','DBY','DMP','EBT','GWO','MPT','MTP','OMB','SCP']);
   const PC_UNMAPPED = new Set(['AUS','BBY','EGS','EGE','FHT','GOR','HWT','LAG','MPB','NTH','RSG','SCB','SSB','SYB','TUT','VTL','YBG','RAG']);
   const ERAD        = new Set(['AFG','ALW','ARH','BPF','CBS','CHR','CPS','CAL','CSB','HBA','KNW','NAS','MFG','PLS','QPL','RCY','SNT','SPT']);
-  // Operating-area codes = middle segment of BaseSiteID (e.g. "OMB-2-256" -> area 2).
-  // The operatingArea field is null in the service, so region is derived from this code.
-  // Feilding (code 1) is deliberately omitted — it isn't a used operating area, so its
-  // few records fall through to the "(unspecified)" bucket rather than showing a bar.
-  const REGION_BY_CODE = { '2':'Horowhenua','3':'Ohura','4':'PalmNth','5':'Taihape','6':'Tararua','7':'Tongariro','8':'Whanganui' };
+  // Region comes straight from the operatingArea field. Feilding is a legacy operating area
+  // whose sites now fall under PalmNth, so fold it in.
+  const REGION_ALIAS = { 'Feilding':'PalmNth' };
   // Contractor spelling variants that should count as one (source data typos).
   const CONT_ALIAS = { 'rangitikei helicoptors':'Rangitikei Helicopters' };
   const aliasCont = n => CONT_ALIAS[String(n||'').trim().toLowerCase().replace(/\s+/g,' ')] || n;
@@ -163,7 +161,7 @@
   // Physical site id = area-number, stripping the species prefix off BaseSiteID ("OMB-2-256" -> "2-256").
   function siteOf(d){ const b = baseSiteOf(d); if (!b) return ''; const p = b.split('-'); return (p.length>=3 && /^\d+$/.test(p[1])) ? p[1]+'-'+p[2] : b; }
   // Operating area: derived from the BaseSiteID area code (the service's operatingArea field is null).
-  function regionOf(d){ const raw = str(d, ['operatingArea','OperatingArea','operatingarea','Operating_Area']); if (raw) return raw; const p = baseSiteOf(d).split('-'); return (p.length>=3 && (p[1] in REGION_BY_CODE)) ? REGION_BY_CODE[p[1]] : ''; }
+  function regionOf(d){ const raw = str(d, ['operatingArea','OperatingArea','operatingarea','Operating_Area']); return REGION_ALIAS[raw] || raw || ''; }
   // Financial year: most records use "23-24"; a few use "2023/2024" — normalise to the short form.
   function normFinYr(s){ s = String(s||'').trim(); const m = s.match(/^(\d{4})\/(\d{4})$/); return m ? m[1].slice(2)+'-'+m[2].slice(2) : s; }
   function distKm(d){
