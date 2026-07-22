@@ -110,7 +110,7 @@
       </div>
 
       <div class="card wide" style="height:300px">
-        <div class="card-head"><div><div class="card-title">Pest Animal Control</div><div class="card-sub">Animals controlled by species (deer)</div></div>
+        <div class="card-head"><div><div class="card-title">Pest Animal Control</div><div class="card-sub">Animals controlled by species (deer, rabbits, hares, hedgehogs)</div></div>
           <button class="export-btn" onclick="exportSingle('c_animal','Pest Animal Control',[])">&#8681; PNG</button></div>
         <div class="card-body"><div class="canvas-box"><canvas id="c_animal"></canvas></div>
           <p class="note" id="animal_note"></p></div>
@@ -137,10 +137,34 @@
     last.data.forEach((b,i)=>{ let t=0; c.data.datasets.forEach(ds=>t+=(Number(ds.data[i])||0)); if(!t)return; ctx.fillText(fmt(t)+' km', b.x+6, b.y); }); ctx.restore(); } };
 
   const isAnimal = d => d.ActivityType === 'Pest Animal Control';
+  // Some contractors (e.g. Wild Animal Control NZ) log animal counts as free text in Comments
+  // rather than as structured point records. Pull "<n> <animal>" pairs into synthetic animal
+  // records so they join the deer points in the Animal card + KPI.
+  const ANIMAL_VOCAB = ['rabbit','hare','hedgehog','possum','deer','goat','pig','cat','stoat','weasel','ferret','mustelid','wallaby','rat','magpie'];
+  const ANIMAL_RE = new RegExp('(\\d+)\\s*(?:x\\s*)?(' + ANIMAL_VOCAB.join('|') + ')s?', 'gi');
+  function parseAnimalComments(rows){
+    const out = [];
+    rows.forEach(r => {
+      const c = r.Comments;
+      if (c == null || c === '' || c === 'Null') return;
+      ANIMAL_RE.lastIndex = 0;
+      let m;
+      while ((m = ANIMAL_RE.exec(String(c))) !== null) {
+        const sp = m[2].toLowerCase();
+        out.push({ Cont_name:r.Cont_name, SiteID:r.SiteID, SiteName:r.SiteName, FinYr:r.FinYr,
+                   ProgrammeType:r.ProgrammeType, ActivityType:r.ActivityType,
+                   SpeciesID: sp.charAt(0).toUpperCase() + sp.slice(1), Size_of_in: parseInt(m[1],10),
+                   _fromComment: true });
+      }
+    });
+    return out;
+  }
+
   fetch('./dashboard_data.json').then(r=>r.json()).then(data=>{
     const rawPoints = data.points || [], rawTracks = data.tracks || [];
     points       = rawPoints.filter(d => !isAnimal(d));   // pest-plant points (species/age/trend need plant semantics)
-    animalPoints = rawPoints.filter(isAnimal);            // pest-animal points (deer) — for the animal card + KPI
+    animalPoints = rawPoints.filter(isAnimal)             // pest-animal points (deer) — for the animal card + KPI
+                     .concat(parseAnimalComments(rawTracks));  // + counts parsed from track comments
     tracks       = rawTracks;                              // ALL tracks — distance/effort span plant + animal effort
     animalTracks = rawTracks.filter(isAnimal);            // pest-animal tracks — for the animal card's distance stat
     rawAll       = rawPoints.concat(rawTracks);
@@ -334,7 +358,7 @@
     const dist    = t.reduce((s,d)=>s+(Number(d.Distance_Km)||0),0);
     const conts   = new Set([...p, ...t].map(d=>canonCont(d.Cont_name)).filter(v=>v!=null&&v!==''));
     el('animal_note').textContent = p.length
-      ? fmt(animals)+' animals controlled · '+fmt(dist)+' km control tracks · '+conts.size+' contractor'+(conts.size===1?'':'s')+'. Deer control — a small but growing dataset.'
+      ? fmt(animals)+' animals controlled · '+fmt(dist)+' km control tracks · '+conts.size+' contractor'+(conts.size===1?'':'s')+'. A small but growing dataset; some counts are read from field-note comments.'
       : 'No pest-animal control records for the current filters.';
   }
 
