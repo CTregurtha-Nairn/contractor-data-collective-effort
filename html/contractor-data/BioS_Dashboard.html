@@ -17,6 +17,8 @@
     .fg{display:flex;flex-direction:column;gap:3px}
     .fg label{font-size:0.64rem;text-transform:uppercase;letter-spacing:.04em;color:#aebccb;font-weight:500}
     .topbar select{min-width:120px;max-width:230px;border:1px solid #46586c;border-radius:6px;padding:7px 26px 7px 9px;font-size:0.8rem;color:#1a1a2e;font-family:inherit;appearance:none;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 8px center;cursor:pointer}
+    .topbar input{min-width:120px;max-width:230px;border:1px solid #46586c;border-radius:6px;padding:7px 9px;font-size:0.8rem;color:#1a1a2e;font-family:inherit;background:#fff}
+    .topbar input::placeholder{color:#9aa7b4}
     .topbar select:focus{outline:none;border-color:#8fb4e0}
     .reset-btn{background:#3a4f63;color:#fff;border:1px solid #46586c;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:0.78rem;font-family:inherit;height:34px}
     .reset-btn:hover{background:#46596e}
@@ -55,7 +57,7 @@
       <div class="fg"><label>Programme</label><select id="f_Programme" onchange="applyFilters()"></select></div>
       <div class="fg"><label>Species</label><select id="f_Species" onchange="applyFilters()"></select></div>
       <div class="fg"><label>Contractor</label><select id="f_Cont_name" onchange="applyFilters()"></select></div>
-      <div class="fg"><label>Base Site ID</label><select id="f_BaseSiteID" onchange="applyFilters()"></select></div>
+      <div class="fg"><label>Base Site ID</label><input id="f_BaseSiteID" list="dl_BaseSiteID" placeholder="Type to search&hellip;" autocomplete="off" oninput="applyFilters()"><datalist id="dl_BaseSiteID"></datalist></div>
       <button class="reset-btn" onclick="resetFilters()">Reset</button>
     </div>
     <div class="scope-line">Showing: <b id="scope">all records</b> &nbsp;·&nbsp; <span style="color:#8fa3b8">Eradication &amp; Progressive Containment programmes. Financial-year filter applies to bar charts; trend/effort always span all years.</span></div>
@@ -107,7 +109,7 @@
           <div class="mini-sub">Total plants controlled &mdash; sum of recorded count</div>
           <div class="canvas-box"><canvas id="c_trend_size"></canvas></div>
         </div>
-        <p class="note">Based on recorded pest-plant control work. A fall in plants controlled can reflect successful containment, but also less control recorded that year &mdash; read alongside effort, and per operating area / programme for the clearest signal.</p>
+        <p class="note">Contractor-recorded pest-plant control work.</p>
       </div>
 
       <div class="card wide">
@@ -227,6 +229,13 @@
     sel.innerHTML = '<option value="__ALL__">' + allLabel + '</option>';
     values.forEach(v => { const o = document.createElement('option'); o.value = v.value; o.textContent = v.text; sel.appendChild(o); });
   }
+  // Base Site ID is a type-to-search text input backed by a datalist (too many IDs to scroll).
+  function fillDatalist(id, values){
+    const dl = el(id); dl.innerHTML = '';
+    values.forEach(v => { const o = document.createElement('option'); o.value = v; dl.appendChild(o); });
+  }
+  // Substring match (case-insensitive) so a partial ID like "AFG-3" or "256" narrows the data.
+  function siteMatches(v){ const q = el('f_BaseSiteID').value.trim().toLowerCase(); return !q || String(v).toLowerCase().includes(q); }
   function uniq(getter){ return [...new Set(recs.map(getter).filter(v => v != null && v !== ''))].sort((a,b)=>String(a).localeCompare(String(b))); }
 
   // Merge case-only contractor-name variants: each lowercased key maps to its most common spelling.
@@ -269,15 +278,16 @@
     fillSelect('f_Species', uniq(d=>d.SpeciesName).filter(isFocus).map(v=>({value:v,text:v})), 'All species');
     const conts = [...new Set(recs.map(d=>canonCont(d.Cont_name)).filter(v=>v!=null&&v!==''))].sort((a,b)=>String(a).localeCompare(String(b)));
     fillSelect('f_Cont_name', conts.map(v=>({value:v,text:v})), 'All contractors');
-    fillSelect('f_BaseSiteID', uniq(d=>d.BaseSiteID).map(v=>({value:v,text:v})), 'All base sites');
+    fillDatalist('dl_BaseSiteID', uniq(d=>d.BaseSiteID));
   }
 
   const FV = id => el(id).value;
   function matchRow(d, ignore){
     ignore = ignore || [];
     const chk = (id, dv) => { if (ignore.includes(id)) return true; const v = FV(id); return v === '__ALL__' || String(dv) === v; };
+    const siteOk = ignore.includes('f_BaseSiteID') || siteMatches(d.BaseSiteID);
     return chk('f_FinYr', d.FinYr) && chk('f_operatingArea', d.operatingArea) && chk('f_Programme', d.Programme)
-        && chk('f_Species', d.SpeciesName) && chk('f_Cont_name', canonCont(d.Cont_name)) && chk('f_BaseSiteID', d.BaseSiteID);
+        && chk('f_Species', d.SpeciesName) && chk('f_Cont_name', canonCont(d.Cont_name)) && siteOk;
   }
   const fpts = ignore => pointRecs.filter(d => matchRow(d, ignore));
   const flns = ignore => lineRecs.filter(d => matchRow(d, ignore));
@@ -446,13 +456,16 @@
     const parts = [];
     ['f_FinYr','f_operatingArea','f_Programme','f_Species','f_Cont_name','f_BaseSiteID'].forEach(id => {
       if (ignore.includes(id)) return;
-      const s = el(id); if (s.value !== '__ALL__') parts.push(s.options[s.selectedIndex].textContent);
+      const s = el(id);
+      if (id === 'f_BaseSiteID'){ const q = s.value.trim(); if (q) parts.push('Site: ' + q); return; }
+      if (s.value !== '__ALL__') parts.push(s.options[s.selectedIndex].textContent);
     });
     return parts.length ? parts.join(' · ') : 'All records';
   }
 
   function resetFilters(){
-    ['f_FinYr','f_operatingArea','f_Programme','f_Species','f_Cont_name','f_BaseSiteID'].forEach(id => el(id).value = '__ALL__');
+    ['f_FinYr','f_operatingArea','f_Programme','f_Species','f_Cont_name'].forEach(id => el(id).value = '__ALL__');
+    el('f_BaseSiteID').value = '';
     applyFilters();
   }
 
