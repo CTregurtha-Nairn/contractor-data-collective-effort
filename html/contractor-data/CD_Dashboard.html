@@ -106,7 +106,7 @@
           <div class="mini-sub">Total plants controlled &mdash; sum of recorded count</div>
           <div class="canvas-box"><canvas id="c_trend_size"></canvas></div>
         </div>
-        <p class="note">Based on recorded pest-plant control work. A fall in plants controlled can reflect successful control, but also less control recorded that year &mdash; read alongside effort. Note: the programme grew from 4 to 38 sites, so the all-sites trend partly reflects more sites being added; read per-site for the clearest signal.</p>
+        <p class="note">Based on recorded pest-plant control work.</p>
       </div>
 
       <div class="card wide" style="height:300px">
@@ -135,6 +135,9 @@
     m.data.forEach((b,i)=>{ const v=c.data.datasets[0].data[i]; if(v==null||v===0)return; ctx.fillText(fmt(v), b.x+6, b.y); }); ctx.restore(); } };
   const totalLabels = { id:'totalLabels', afterDatasetsDraw(c){ const {ctx}=c; const last=c.getDatasetMeta(c.data.datasets.length-1); ctx.save(); ctx.font="600 11px 'DM Sans',sans-serif"; ctx.fillStyle='#41546D'; ctx.textBaseline='middle';
     last.data.forEach((b,i)=>{ let t=0; c.data.datasets.forEach(ds=>t+=(Number(ds.data[i])||0)); if(!t)return; ctx.fillText(fmt(t)+' km', b.x+6, b.y); }); ctx.restore(); } };
+  // Same as totalLabels but no unit suffix — for stacked count charts (e.g. animals per species).
+  const countTotals = { id:'countTotals', afterDatasetsDraw(c){ const {ctx}=c; const last=c.getDatasetMeta(c.data.datasets.length-1); ctx.save(); ctx.font="600 11px 'DM Sans',sans-serif"; ctx.fillStyle='#41546D'; ctx.textBaseline='middle';
+    last.data.forEach((b,i)=>{ let t=0; c.data.datasets.forEach(ds=>t+=(Number(ds.data[i])||0)); if(!t)return; ctx.fillText(fmt(t), b.x+6, b.y); }); ctx.restore(); } };
 
   const isAnimal = d => d.ActivityType === 'Pest Animal Control';
   // Some contractors (e.g. Wild Animal Control NZ) log animal counts as free text in Comments
@@ -266,10 +269,14 @@
   const fAnimalP = () => animalPoints.filter(d => matchRow(d));
   const fAnimalT = () => animalTracks.filter(d => matchRow(d));
   function dataAnimal(){
+    const rows = fAnimalP();
     const tot = {};
-    fAnimalP().forEach(d => { const c = d.SpeciesID; if (c == null || c === '' || c === 'Null') return; tot[c] = (tot[c]||0) + (Number(d.Size_of_in)||0); });
-    const labels = Object.keys(tot).sort((a,b)=>tot[b]-tot[a]);
-    return { labels, values: labels.map(c=>Math.round(tot[c]*100)/100) };
+    rows.forEach(d => { const c = d.SpeciesID; if (c == null || c === '' || c === 'Null') return; tot[c] = (tot[c]||0) + (Number(d.Size_of_in)||0); });
+    const cats = Object.keys(tot).sort((a,b)=>tot[b]-tot[a]);   // descending → largest species at top
+    const pivot = {}; cats.forEach(c => { pivot[c] = {}; YEARS.forEach(y => pivot[c][y] = 0); });
+    rows.forEach(d => { const c = d.SpeciesID, y = d.FinYr; if (c in pivot && y in pivot[c]) pivot[c][y] += (Number(d.Size_of_in)||0); });
+    const datasets = YEARS.map(y => ({ label:y, data: cats.map(c=>Math.round(pivot[c][y]*100)/100), backgroundColor: FY_COLORS[y]||FALLBACK, borderWidth:0 }));
+    return { labels: cats, datasets };
   }
 
   // ---------- render ----------
@@ -324,12 +331,12 @@
     const an = dataAnimal();
     cAnimal = new Chart(el('c_animal'), {
       type:'bar',
-      data:{ labels:an.labels, datasets:[{ data:an.values, backgroundColor:'#a0703c', borderWidth:0, borderRadius:3, barPercentage:0.7, categoryPercentage:0.85 }] },
+      data:{ labels:an.labels, datasets:an.datasets },
       options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{padding:{right:56}},
-        plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>'Animals controlled: '+fmt(c.parsed.x) } } },
-        scales:{ x:{beginAtZero:true,title:{display:true,text:'Animals controlled',font:{family:FONT,size:10}},grid:{color:'#e8e8e8'},ticks:{precision:0,font:{family:FONT}}},
-                 y:{grid:{display:false},ticks:{color:'#000',autoSkip:false,font:{family:FONT,size:11}}} } },
-      plugins:[valueLabels]
+        plugins:{ legend:{position:'bottom',labels:{font:{family:FONT},padding:12,boxWidth:12}}, tooltip:{ callbacks:{ label:c=>c.dataset.label+': '+fmt(c.parsed.x) } } },
+        scales:{ x:{stacked:true,beginAtZero:true,title:{display:true,text:'Animals controlled',font:{family:FONT,size:10}},grid:{color:'#e8e8e8'},ticks:{precision:0,font:{family:FONT}}},
+                 y:{stacked:true,grid:{display:false},ticks:{color:'#000',autoSkip:false,font:{family:FONT,size:11}}} } },
+      plugins:[countTotals]
     });
   }
 
@@ -352,13 +359,13 @@
 
   function computeAnimal(){
     const an = dataAnimal();
-    cAnimal.data.labels = an.labels; cAnimal.data.datasets[0].data = an.values; cAnimal.update();
+    cAnimal.data.labels = an.labels; cAnimal.data.datasets = an.datasets; cAnimal.update();
     const p = fAnimalP(), t = fAnimalT();
     const animals = p.reduce((s,d)=>s+(Number(d.Size_of_in)||0),0);
     const dist    = t.reduce((s,d)=>s+(Number(d.Distance_Km)||0),0);
     const conts   = new Set([...p, ...t].map(d=>canonCont(d.Cont_name)).filter(v=>v!=null&&v!==''));
     el('animal_note').textContent = p.length
-      ? fmt(animals)+' animals controlled · '+fmt(dist)+' km control tracks · '+conts.size+' contractor'+(conts.size===1?'':'s')+'. A small but growing dataset; some counts are read from field-note comments.'
+      ? fmt(animals)+' animals controlled · '+fmt(dist)+' km control tracks · '+conts.size+' contractor'+(conts.size===1?'':'s')+'.'
       : 'No pest-animal control records for the current filters.';
   }
 
