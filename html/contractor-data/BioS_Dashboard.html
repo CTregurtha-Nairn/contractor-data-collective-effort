@@ -76,7 +76,7 @@
 
     <div class="grid">
       <div class="card">
-        <div class="card-head"><div><div class="card-title">Plants Controlled by Species</div><div class="card-sub">RPMP focus species · <span style="color:#DF6B35">Eradication</span> / <span style="color:#77B484">Prog. Containment</span> · Other = unmapped</div></div>
+        <div class="card-head"><div><div class="card-title">Plants Controlled by Species</div><div class="card-sub">RPMP focus species · <span style="color:#DF6B35">Eradication</span> / <span style="color:#77B484">Prog. Containment</span> · Other = all non-focus species</div></div>
           <button class="export-btn" onclick="exportSingle('c_species','Plants Controlled by Species',[])">&#8681; PNG</button></div>
         <div class="card-body"><div class="canvas-box"><canvas id="c_species"></canvas></div></div>
       </div>
@@ -127,12 +127,11 @@
   const PROGRAMMES = ['Eradication', 'Progressive Containment'];
   // Species chart colours by RPMP programme: Eradication (orange), PC-Mapped (green), Other (grey).
   const SP_COLORS = { 'Eradication':'#DF6B35', 'PC-Mapped':'#77B484', 'Other':'#b9c2cc' };
-  // RPMP species -> programme, by 3-letter code. PC_MAPPED + PC_UNMAPPED are the full lists
-  // from the plan; ERAD is the (screenshot-visible) Eradication list. Any other in-scope
-  // species whose records are dominantly Eradication is treated as Eradication (see classify()).
+  // RPMP species -> programme, by 3-letter code. These lists are the sole authority: a species
+  // not named here is NOT an RPMP focus species and sums into the grey "Other" bar (see classify()).
   const PC_MAPPED   = new Set(['BAP','BSD','CON','DBY','DMP','EBT','GWO','MPT','MTP','OMB','SCP']);
   const PC_UNMAPPED = new Set(['AUS','BBY','EGS','EGE','FHT','GOR','HWT','LAG','MPB','NTH','RSG','SCB','SSB','SYB','TUT','VTL','YBG','RAG']);
-  const ERAD        = new Set(['AFG','ALW','ARH','BPF','CBS','CHR','CPS','CAL','CSB','HBA','KNW','NAS','MFG','PLS','QPL','RCY','SNT','SPT']);
+  const ERAD        = new Set(['AFG','ALW','ARH','BPF','CBS','CHR','CPS','CAL','CSB','HBA','KNW','NAS','MFG','PLS','QPL','RCY','SNT','SPT','WNS']);
   // Region comes straight from the operatingArea field. Feilding is a legacy operating area
   // whose sites now fall under PalmNth, so fold it in.
   const REGION_ALIAS = { 'Feilding':'PalmNth' };
@@ -154,6 +153,11 @@
   const num = (d, keys) => { for (const k of keys){ if (k in d && d[k] != null && d[k] !== ''){ const n = Number(d[k]); if (isFinite(n)) return n; } } return 0; };
   const str = (d, keys) => { for (const k of keys){ if (k in d && d[k] != null && d[k] !== ''){ return String(d[k]); } } return ''; };
   const sizeOf   = d => num(d, ['Size_of_in','Size_of_In','size_of_in','PlantsControlled','plantsControlled','Count']);
+  // Aerial (helicopter) points don't use Size_of_in / Age_class — each point carries its own
+  // adult / juvenile / seedling counts instead. Read them into the same shape as ground points.
+  const ageCounts = d => ({ A: num(d, ['adultCount','AdultCount','adult_count']),
+                            J: num(d, ['juvenileCount','JuvenileCount','juvenile_count']),
+                            S: num(d, ['seedlingCount','SeedlingCount','seedling_count']) });
   const sqmOf    = d => num(d, ['Size_sqm','Size_Sqm','size_sqm','SizeSqm']);
   const ageOf    = d => str(d, ['Age_class','AgeClass','age_class']);
   const projOf   = d => str(d, ['projectType','ProjectType','projecttype','Project_Type']);
@@ -180,13 +184,6 @@
     if (/^Progressive Containment/i.test(s)) return 'Progressive Containment';
     return null;
   }
-  // Fine programme (distinguishes Mapped vs Unmapped) — used to derive each species' class.
-  function progFine(pt){
-    const s = String(pt || '').trim();
-    if (/^Eradication/i.test(s)) return 'Eradication';
-    if (/progressive containment/i.test(s)) return /unmapped/i.test(s) ? 'PC-Unmapped' : 'PC-Mapped';
-    return null;
-  }
   function norm(r, bucket, geom){
     r._bucket = bucket; r._geom = geom;
     r.Programme = normProg(projOf(r));
@@ -196,6 +193,11 @@
     r.SiteID = siteOf(r);
     r.Age_class = ageOf(r);
     r.Size_of_in = sizeOf(r);
+    r._ages = null;                                    // per-record A/J/S counts (aerial points only)
+    if (geom === 'point'){
+      const ac = ageCounts(r), acTot = ac.A + ac.J + ac.S;
+      if (acTot > 0){ r._ages = ac; if (!r.Size_of_in) r.Size_of_in = acTot; }
+    }
     r.Size_sqm = sqmOf(r);
     r._km = geom === 'line' ? distKm(r) : 0;
     r._area = geom === 'polygon' ? shpArea(r) : 0;
@@ -254,20 +256,19 @@
   }
 
   // Classify each species (by name) into Eradication / PC-Mapped / Other for colouring + the
-  // species filter. RPMP code lists win; anything else in-scope falls back to its data-dominant
-  // fine programme (so a genuine Eradication species missing from the visible list still lands right).
-  function classify(code, dataDom){
+  // species filter. Only the RPMP code lists count: a species that isn't in one of them is
+  // "Other", however its records happen to be tagged. The record-level projectType is too
+  // inconsistent per species to promote anything on its own (it used to, which is why one-off
+  // free-text entries like "IVY" or "Periwinkle" showed as individual Eradication bars).
+  function classify(code){
     if (PC_UNMAPPED.has(code)) return 'Other';
     if (PC_MAPPED.has(code))   return 'PC-Mapped';
     if (ERAD.has(code))        return 'Eradication';
-    return dataDom === 'Eradication' ? 'Eradication' : 'Other';
+    return 'Other';
   }
   function buildSpeciesClass(){
-    const fine = {};   // code -> { fineCat: count }
-    recs.forEach(d => { const code = d.SpeciesID; if (!code) return; const f = progFine(d.projectType); if (!f) return; (fine[code] = fine[code] || {})[f] = (fine[code][f]||0) + 1; });
-    const dom = code => { const c = fine[code] || {}; let b = null, bc = -1; for (const k in c){ if (c[k] > bc){ bc = c[k]; b = k; } } return b; };
     SP_CLASS = {};
-    recs.forEach(d => { const name = d.SpeciesName; if (!name || name in SP_CLASS) return; SP_CLASS[name] = classify(d.SpeciesID, dom(d.SpeciesID)); });
+    recs.forEach(d => { const name = d.SpeciesName; if (!name || name in SP_CLASS) return; SP_CLASS[name] = classify(d.SpeciesID); });
   }
 
   function buildFilters(){
@@ -298,7 +299,7 @@
     const tot = {};
     fpts().forEach(d => { const c = d.SpeciesName; if (!c) return; const v = Number(d.Size_of_in)||0; if (!v) return; tot[c] = (tot[c]||0) + v; });
     // RPMP focus species (Eradication + PC-Mapped) shown individually and coloured by programme;
-    // everything else (unmapped / not-focus) is summed into one grey "Other" bar.
+    // everything else (PC-Unmapped, and anything not in the RPMP lists) sums into one grey "Other" bar.
     const focus = [], other = [];
     Object.keys(tot).forEach(name => (isFocus(name) ? focus : other).push(name));
     focus.sort((a,b)=>tot[b]-tot[a]);
@@ -309,7 +310,10 @@
   }
   function dataAge(){
     const t = { A:0, J:0, S:0 };
-    fpts().forEach(d => { const a = String(d.Age_class||'').trim().toUpperCase(); if (a in t) t[a] += (Number(d.Size_of_in)||0); });
+    fpts().forEach(d => {
+      if (d._ages){ t.A += d._ages.A; t.J += d._ages.J; t.S += d._ages.S; return; }
+      const a = String(d.Age_class||'').trim().toUpperCase(); if (a in t) t[a] += (Number(d.Size_of_in)||0);
+    });
     return [Math.round(t.A), Math.round(t.J), Math.round(t.S)];
   }
   function dataDistance(){
