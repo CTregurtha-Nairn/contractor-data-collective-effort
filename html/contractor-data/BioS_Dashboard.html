@@ -161,6 +161,11 @@
   const sqmOf    = d => num(d, ['Size_sqm','Size_Sqm','size_sqm','SizeSqm']);
   const ageOf    = d => str(d, ['Age_class','AgeClass','age_class']);
   const projOf   = d => str(d, ['projectType','ProjectType','projecttype','Project_Type']);
+  const activityOf = d => str(d, ['activityType','ActivityType','activity_type']);
+  // A survey records plants seen, not plants killed — the same population usually turns up again
+  // on a later control run at the same site (e.g. Pohangina OMB: surveyed 13/01/26, controlled
+  // 09/02/26). Matched by name so records with a blank/unknown activityType still count.
+  const isSurvey = d => /^survey$/i.test(activityOf(d).trim());
   const contOf   = d => str(d, ['Cont_name','ContractorName','Contractor_Name','cont_name','operatorName']);
   const shpArea  = d => num(d, ['Shape__Area','Shape_Area','SHAPE_Area','Shape__area']);
   const baseSiteOf = d => str(d, ['BaseSiteID','baseSiteID','SiteID','siteID','Site_ID']);
@@ -194,7 +199,7 @@
     r.Age_class = ageOf(r);
     r.Size_of_in = sizeOf(r);
     r._ages = null;                                    // per-record A/J/S counts (aerial points only)
-    if (geom === 'point'){
+    if (geom === 'point' && !isSurvey(r)){
       const ac = ageCounts(r), acTot = ac.A + ac.J + ac.S;
       if (acTot > 0){ r._ages = ac; if (!r.Size_of_in) r.Size_of_in = acTot; }
     }
