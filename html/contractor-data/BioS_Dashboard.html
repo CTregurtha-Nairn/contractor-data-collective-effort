@@ -136,7 +136,10 @@
   // whose sites now fall under PalmNth, so fold it in.
   const REGION_ALIAS = { 'Feilding':'PalmNth' };
   // Contractor spelling variants that should count as one (source data typos).
-  const CONT_ALIAS = { 'rangitikei helicoptors':'Rangitikei Helicopters' };
+  // Note these are spelling variants, not case variants — the generic case-only merge below
+  // cannot catch a swapped letter or a missing trailing "s".
+  const CONT_ALIAS = { 'rangitikei helicoptors':'Rangitikei Helicopters',
+                       'tararua heliwork':'Tararua Heliworks' };
   const aliasCont = n => CONT_ALIAS[String(n||'').trim().toLowerCase().replace(/\s+/g,' ')] || n;
   const FALLBACK = '#9aa5b1';
   const fmt = n => Math.round(n).toLocaleString('en-NZ');
@@ -210,7 +213,11 @@
     return r;
   }
 
-  fetch('./bios_dashboard_data.json').then(r=>r.json()).then(data=>{
+  // cache:'no-cache' forces the browser to revalidate with the server on every load instead of
+  // silently reusing its cached copy — otherwise a fresh export can sit unseen behind a stale
+  // one for hours, which matters most in the ExB embed where nobody can hard-refresh the iframe.
+  // It is NOT 'no-store': unchanged data still comes back as a cheap 304, not a 12 MB re-download.
+  fetch('./bios_dashboard_data.json', {cache:'no-cache'}).then(r=>r.json()).then(data=>{
     const gp  = (data.ground_points   || []).map(r => norm(r, 'ground_points',   'point'));
     const gl  = (data.ground_lines    || []).map(r => norm(r, 'ground_lines',    'line'));
     const ap  = (data.aerial_points   || []).map(r => norm(r, 'aerial_points',   'point'));
