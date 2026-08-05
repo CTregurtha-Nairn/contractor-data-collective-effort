@@ -281,12 +281,14 @@
 
   // ---------- render ----------
   const FONT = "'DM Sans', sans-serif";
-  function lineChart(id, values, color, yTitle, integerY){
+  // unit: tooltip suffix (e.g. ' km'). Kept separate from integerY — they used to be the same
+  // flag, which put " km" on the plants-controlled trend tooltip.
+  function lineChart(id, values, color, yTitle, integerY, unit){
     return new Chart(el(id), {
       type:'line',
       data:{ labels:YEARS, datasets:[{ data:values, borderColor:color, backgroundColor:color+'22', borderWidth:2, tension:.25, fill:true, spanGaps:false, pointRadius:4, pointHoverRadius:6, pointBackgroundColor:color }] },
       options:{ responsive:true, maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
-        plugins:{ legend:{display:false}, tooltip:{ callbacks:{ title:i=>i[0].label, label:c=>fmt(c.parsed.y)+(integerY?'':' km') } } },
+        plugins:{ legend:{display:false}, tooltip:{ callbacks:{ title:i=>i[0].label, label:c=>fmt(c.parsed.y)+(unit||'') } } },
         scales:{ x:{grid:{display:false},ticks:{color:'#000',font:{family:FONT,size:11,weight:'600'}}},
                  y:{beginAtZero:true,title:{display:true,text:yTitle,font:{family:FONT,size:10}},grid:{color:'#e8e8e8'},ticks:{precision:integerY?0:undefined,font:{family:FONT}}} } }
     });
@@ -323,10 +325,10 @@
       plugins:[totalLabels]
     });
 
-    cEffort = lineChart('c_effort', dataEffort(), '#2d6a4f', 'Distance covered (Km)', false);
+    cEffort = lineChart('c_effort', dataEffort(), '#2d6a4f', 'Distance covered (Km)', false, ' km');
     const tr = dataTrend();
-    cTrendDiv  = lineChart('c_trend_div',  tr.diversity, '#5E8FD0', 'Distinct species', true);
-    cTrendSize = lineChart('c_trend_size', tr.size,      '#DF6B35', 'Plants controlled', false);
+    cTrendDiv  = lineChart('c_trend_div',  tr.diversity, '#5E8FD0', 'Distinct species', true, ' species');
+    cTrendSize = lineChart('c_trend_size', tr.size,      '#DF6B35', 'Plants controlled', true, ' plants');
 
     const an = dataAnimal();
     cAnimal = new Chart(el('c_animal'), {
